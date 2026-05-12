@@ -2,29 +2,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Brand } from "@/types/brand";
-import BrandCard from "@/components/BrandCard";
-import FilterBar from "@/components/FilterBar";
+import BrandList from "@/components/BrandList";
+import AdsPanel from "@/components/AdsPanel";
 
 export default function Home() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Brand | null>(null);
 
   const [search, setSearch] = useState("");
   const [selectedSecteur, setSelectedSecteur] = useState("");
-  const [selectedCategorie, setSelectedCategorie] = useState("");
 
   useEffect(() => {
     fetch("/api/brands")
       .then((r) => r.json())
-      .then((data) => {
+      .then((data: Brand[]) => {
         setBrands(data);
+        if (data.length > 0) setSelected(data[0]);
         setLoading(false);
       })
-      .catch(() => {
-        setError("Impossible de charger les marques.");
-        setLoading(false);
-      });
+      .catch(() => setLoading(false));
   }, []);
 
   const secteurs = useMemo(
@@ -32,79 +29,51 @@ export default function Home() {
     [brands]
   );
 
-  const categories = useMemo(() => {
-    const base = brands.filter(
-      (b) => !selectedSecteur || b.secteur === selectedSecteur
-    );
-    return [...new Set(base.map((b) => b.categorie).filter(Boolean))].sort();
-  }, [brands, selectedSecteur]);
-
-  const filtered = useMemo(() => {
-    return brands.filter((b) => {
-      const matchSearch =
-        !search || b.name.toLowerCase().includes(search.toLowerCase());
-      const matchSecteur = !selectedSecteur || b.secteur === selectedSecteur;
-      const matchCat = !selectedCategorie || b.categorie === selectedCategorie;
-      return matchSearch && matchSecteur && matchCat;
-    });
-  }, [brands, search, selectedSecteur, selectedCategorie]);
+  const filtered = useMemo(
+    () =>
+      brands.filter((b) => {
+        const matchSearch =
+          !search || b.name.toLowerCase().includes(search.toLowerCase());
+        const matchSecteur =
+          !selectedSecteur || b.secteur === selectedSecteur;
+        return matchSearch && matchSecteur;
+      }),
+    [brands, search, selectedSecteur]
+  );
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">📡</span>
-            <h1 className="text-xl font-bold text-gray-900">
-              Meta Brands Tracker
-            </h1>
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      {/* Left sidebar — brand list */}
+      <div className="w-64 shrink-0 flex flex-col h-full">
+        {loading ? (
+          <div className="flex items-center justify-center flex-1 text-gray-400 text-sm">
+            Chargement…
           </div>
-          <FilterBar
+        ) : (
+          <BrandList
+            brands={filtered}
+            selected={selected}
+            onSelect={setSelected}
             search={search}
             onSearch={setSearch}
             secteurs={secteurs}
             selectedSecteur={selectedSecteur}
-            onSecteur={(v) => {
-              setSelectedSecteur(v);
-              setSelectedCategorie("");
-            }}
-            categories={categories}
-            selectedCategorie={selectedCategorie}
-            onCategorie={setSelectedCategorie}
-            total={brands.length}
-            filtered={filtered.length}
+            onSecteur={setSelectedSecteur}
           />
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {loading && (
-          <div className="flex items-center justify-center py-24 text-gray-400 text-sm">
-            Chargement…
-          </div>
         )}
+      </div>
 
-        {error && (
-          <div className="flex items-center justify-center py-24 text-red-500 text-sm">
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 gap-2 text-gray-400">
-            <span className="text-4xl">🔍</span>
-            <p className="text-sm">Aucune marque ne correspond aux filtres.</p>
-          </div>
-        )}
-
-        {!loading && !error && filtered.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filtered.map((brand) => (
-              <BrandCard key={brand.id} brand={brand} />
-            ))}
+      {/* Right — ads */}
+      <div className="flex-1 flex flex-col min-w-0 h-full">
+        {selected ? (
+          <AdsPanel key={selected.id} brand={selected} />
+        ) : (
+          <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400">
+            <span className="text-4xl">👈</span>
+            <p className="text-sm">Sélectionne une marque</p>
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
