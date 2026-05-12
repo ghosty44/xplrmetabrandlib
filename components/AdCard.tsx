@@ -1,7 +1,7 @@
 "use client";
 
 import { MetaAd } from "@/types/brand";
-import { Eye } from "lucide-react";
+import { Eye, ExternalLink } from "lucide-react";
 
 function formatDate(iso?: string) {
   if (!iso) return null;
@@ -40,18 +40,20 @@ export default function AdCard({ ad, brandColor }: Props) {
       {/* Color accent */}
       <div className="h-1 w-full shrink-0" style={{ background: brandColor }} />
 
-      {/* Ad visual — snapshot iframe direct (Meta designed for embedding) */}
+      {/* Ad visual — Meta blocks iframe embedding, open in new tab instead */}
       {!isMock && ad.ad_snapshot_url && (
-        <div className="w-full bg-gray-50 border-b border-gray-100 overflow-hidden"
-             style={{ height: 320 }}>
-          <iframe
-            src={ad.ad_snapshot_url}
-            className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-            loading="lazy"
-            title={`Ad ${ad.id}`}
-          />
-        </div>
+        <a
+          href={ad.ad_snapshot_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full bg-gray-100 border-b border-gray-100 flex flex-col items-center justify-center gap-2 hover:bg-gray-200 transition-colors group cursor-pointer"
+          style={{ height: 220 }}
+        >
+          <ExternalLink size={20} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
+          <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
+            Voir la publicité
+          </span>
+        </a>
       )}
 
       {/* Text content */}
