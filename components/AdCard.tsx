@@ -40,14 +40,14 @@ export default function AdCard({ ad, brandColor }: Props) {
       {/* Color accent */}
       <div className="h-1 w-full shrink-0" style={{ background: brandColor }} />
 
-      {/* Ad visual — iframe proxy (live only) */}
-      {!isMock && (
+      {/* Ad visual — snapshot iframe direct (Meta designed for embedding) */}
+      {!isMock && ad.ad_snapshot_url && (
         <div className="w-full bg-gray-50 border-b border-gray-100 overflow-hidden"
              style={{ height: 320 }}>
           <iframe
-            src={`/api/snapshot/${ad.id}`}
+            src={ad.ad_snapshot_url}
             className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-popups"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
             loading="lazy"
             title={`Ad ${ad.id}`}
           />
