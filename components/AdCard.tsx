@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { MetaAd } from "@/types/brand";
-import { Eye, ExternalLink } from "lucide-react";
+import { Eye } from "lucide-react";
 
 function formatDate(iso?: string) {
   if (!iso) return null;
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export default function AdCard({ ad, brandColor }: Props) {
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const body = ad.ad_creative_bodies?.[0];
   const title = ad.ad_creative_link_titles?.[0];
   const imp = formatImpressions(ad.impressions);
@@ -40,20 +42,22 @@ export default function AdCard({ ad, brandColor }: Props) {
       {/* Color accent */}
       <div className="h-1 w-full shrink-0" style={{ background: brandColor }} />
 
-      {/* Ad visual — Meta blocks iframe embedding, open in new tab instead */}
+      {/* Ad visual — proxied through /api/snapshot to bypass Meta's X-Frame-Options */}
       {!isMock && ad.ad_snapshot_url && (
-        <a
-          href={ad.ad_snapshot_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full bg-gray-100 border-b border-gray-100 flex flex-col items-center justify-center gap-2 hover:bg-gray-200 transition-colors group cursor-pointer"
-          style={{ height: 220 }}
-        >
-          <ExternalLink size={20} className="text-gray-400 group-hover:text-gray-600 transition-colors" />
-          <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
-            Voir la publicité
-          </span>
-        </a>
+        <div className="relative w-full border-b border-gray-100 overflow-hidden bg-gray-100" style={{ height: 320 }}>
+          {!iframeLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-6 h-6 rounded-full border-2 border-gray-300 border-t-gray-500 animate-spin" />
+            </div>
+          )}
+          <iframe
+            src={`/api/snapshot?url=${encodeURIComponent(ad.ad_snapshot_url)}`}
+            className="w-full h-full border-0"
+            loading="lazy"
+            onLoad={() => setIframeLoaded(true)}
+            title={`Ad ${ad.id}`}
+          />
+        </div>
       )}
 
       {/* Text content */}
