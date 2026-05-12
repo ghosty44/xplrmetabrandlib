@@ -16,9 +16,10 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Meta API expects search_page_ids as a JSON array string
     const params = new URLSearchParams({
-      search_page_ids: pageId,
-      ad_reached_countries: '["FR"]',
+      search_page_ids: JSON.stringify([pageId]),
+      ad_reached_countries: JSON.stringify(["FR"]),
       ad_type: "ALL",
       fields: [
         "id",

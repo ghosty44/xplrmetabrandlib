@@ -2,6 +2,15 @@ import { Brand } from "@/types/brand";
 
 export const MOCK_BRANDS: Brand[] = [
   {
+    id: "0",
+    name: "Test Brand",
+    metaAdsUrl:
+      "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=FR&search_type=page&view_all_page_id=1490249134610027",
+    secteur: "Test",
+    categorie: "Démo live",
+    pageId: "1490249134610027",
+  },
+  {
     id: "1",
     name: "Sézane",
     metaAdsUrl:
