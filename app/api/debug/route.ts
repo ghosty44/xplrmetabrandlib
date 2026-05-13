@@ -12,7 +12,7 @@ export async function GET() {
       search_page_ids: JSON.stringify(["6550003123"]),
       ad_reached_countries: JSON.stringify(["FR"]),
       ad_type: "ALL",
-      fields: "id,page_name",
+      fields: "id,page_name,snapshot,ad_snapshot_url",
       access_token: token,
       limit: "3",
     });
