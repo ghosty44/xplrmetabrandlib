@@ -5,10 +5,10 @@ export const MOCK_BRANDS: Brand[] = [
     id: "0",
     name: "Test Brand",
     metaAdsUrl:
-      "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=FR&search_type=page&view_all_page_id=1490249134610027",
+      "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=FR&is_targeted_country=false&media_type=all&search_type=page&sort_data[direction]=desc&sort_data[mode]=total_impressions&view_all_page_id=6550003123",
     secteur: "Test",
     categorie: "Démo live",
-    pageId: "1490249134610027",
+    pageId: "6550003123",
   },
   {
     id: "1",

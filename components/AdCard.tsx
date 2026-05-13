@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { MetaAd } from "@/types/brand";
 import { Eye } from "lucide-react";
 
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export default function AdCard({ ad, brandColor }: Props) {
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const body = ad.ad_creative_bodies?.[0];
   const title = ad.ad_creative_link_titles?.[0];
   const imp = formatImpressions(ad.impressions);
@@ -40,15 +42,19 @@ export default function AdCard({ ad, brandColor }: Props) {
       {/* Color accent */}
       <div className="h-1 w-full shrink-0" style={{ background: brandColor }} />
 
-      {/* Ad visual — snapshot iframe direct (Meta designed for embedding) */}
+      {/* Ad visual — proxied through /api/snapshot to bypass Meta's X-Frame-Options */}
       {!isMock && ad.ad_snapshot_url && (
-        <div className="w-full bg-gray-50 border-b border-gray-100 overflow-hidden"
-             style={{ height: 320 }}>
+        <div className="relative w-full border-b border-gray-100 overflow-hidden bg-gray-100" style={{ height: 320 }}>
+          {!iframeLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-6 h-6 rounded-full border-2 border-gray-300 border-t-gray-500 animate-spin" />
+            </div>
+          )}
           <iframe
-            src={ad.ad_snapshot_url}
+            src={`/api/snapshot?url=${encodeURIComponent(ad.ad_snapshot_url)}`}
             className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
             loading="lazy"
+            onLoad={() => setIframeLoaded(true)}
             title={`Ad ${ad.id}`}
           />
         </div>

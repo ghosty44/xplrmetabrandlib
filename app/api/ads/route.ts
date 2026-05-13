@@ -31,6 +31,7 @@ export async function GET(request: Request) {
         "ad_delivery_start_time",
         "ad_delivery_stop_time",
         "impressions",
+        "snapshot",
       ].join(","),
       access_token: token,
       limit: "24",
