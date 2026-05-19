@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBrands, createBrand } from "@/lib/notion";
-import { fetchAdsForBrand } from "@/lib/meta";
-import { prisma } from "@/lib/db";
 
 export async function GET() {
   try {
@@ -26,44 +24,6 @@ export async function POST(req: NextRequest) {
     }
 
     const brand = await createBrand({ name, metaPageId, category: category ?? "" });
-
-    // Trigger initial sync in background
-    const token = process.env.META_ACCESS_TOKEN ?? "";
-    if (token) {
-      fetchAdsForBrand(metaPageId, token)
-        .then(async (ads) => {
-          for (const ad of ads) {
-            await prisma.ad.upsert({
-              where: { metaAdId: ad.id },
-              update: {
-                snapshotUrl: ad.ad_snapshot_url ?? null,
-                bodyText: ad.ad_creative_bodies?.[0] ?? null,
-                linkTitle: ad.ad_creative_link_titles?.[0] ?? null,
-                linkDescription: ad.ad_creative_link_descriptions?.[0] ?? null,
-                platforms: ad.publisher_platforms?.join(",") ?? null,
-                activeSince: ad.ad_delivery_start_time
-                  ? new Date(ad.ad_delivery_start_time)
-                  : null,
-                fetchedAt: new Date(),
-              },
-              create: {
-                metaAdId: ad.id,
-                brandId: brand.id,
-                snapshotUrl: ad.ad_snapshot_url ?? null,
-                bodyText: ad.ad_creative_bodies?.[0] ?? null,
-                linkTitle: ad.ad_creative_link_titles?.[0] ?? null,
-                linkDescription: ad.ad_creative_link_descriptions?.[0] ?? null,
-                platforms: ad.publisher_platforms?.join(",") ?? null,
-                activeSince: ad.ad_delivery_start_time
-                  ? new Date(ad.ad_delivery_start_time)
-                  : null,
-              },
-            });
-          }
-        })
-        .catch((err) => console.error("Initial sync error:", err));
-    }
-
     return NextResponse.json(brand, { status: 201 });
   } catch (error) {
     console.error("POST /api/brands error:", error);
