@@ -32,10 +32,15 @@ export default function AdsPanel({ brand }: Props) {
     setAds([]);
 
     fetch(`/api/ads?pageId=${brand.metaPageId}`)
-      .then((r) => r.json())
-      .then((data) => {
+      .then(async (r) => {
+        const data = await r.json();
         if (!cancelled) {
-          setAds(Array.isArray(data) ? data : []);
+          if (!r.ok) {
+            const msg = data?.metaError?.message ?? data?.error ?? `Erreur ${r.status}`;
+            setError(`Meta API : ${msg}`);
+          } else {
+            setAds(Array.isArray(data) ? data : []);
+          }
           setLoading(false);
         }
       })

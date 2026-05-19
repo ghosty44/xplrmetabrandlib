@@ -17,8 +17,8 @@ export async function GET(request: Request) {
 
   try {
     const params = new URLSearchParams({
-      search_page_ids: JSON.stringify([pageId]),
-      ad_reached_countries: JSON.stringify(["FR"]),
+      search_page_ids: pageId,
+      ad_active_status: "ALL",
       ad_type: "ALL",
       fields: [
         "id",
@@ -41,13 +41,16 @@ export async function GET(request: Request) {
     const data = await res.json();
 
     if (data.error) {
-      console.error("Meta API error:", data.error);
-      return NextResponse.json(getMockAds(pageId));
+      console.error("Meta API error:", JSON.stringify(data.error));
+      return NextResponse.json(
+        { metaError: data.error },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json(data.data ?? []);
   } catch (err) {
     console.error("Meta API fetch failed:", err);
-    return NextResponse.json(getMockAds(pageId));
+    return NextResponse.json({ error: String(err) }, { status: 502 });
   }
 }
