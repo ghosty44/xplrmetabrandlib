@@ -118,11 +118,6 @@ export default function AdsPanel({ brand }: Props) {
           <>
             <p className="text-xs text-gray-400 mb-4">
               {ads.length} publicité{ads.length > 1 ? "s" : ""}
-              {ads[0].id.startsWith("mock_") && (
-                <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-xs font-medium">
-                  données de démo — configurez META_ACCESS_TOKEN pour le live
-                </span>
-              )}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
               {ads.map((ad) => (

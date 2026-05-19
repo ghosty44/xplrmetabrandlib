@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getMockAds } from "@/lib/mock-ads";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -12,43 +11,37 @@ export async function GET(request: Request) {
   const token = process.env.META_ACCESS_TOKEN;
 
   if (!token) {
-    return NextResponse.json(getMockAds(pageId));
+    return NextResponse.json({ error: "META_ACCESS_TOKEN non configuré" }, { status: 503 });
   }
 
-  try {
-    // Meta API expects search_page_ids as a JSON array string
-    const params = new URLSearchParams({
-      search_page_ids: JSON.stringify([pageId]),
-      ad_reached_countries: JSON.stringify(["FR"]),
-      ad_type: "ALL",
-      fields: [
-        "id",
-        "page_name",
-        "ad_creative_bodies",
-        "ad_creative_link_titles",
-        "ad_creative_link_descriptions",
-        "ad_snapshot_url",
-        "ad_delivery_start_time",
-        "ad_delivery_stop_time",
-        "impressions",
-      ].join(","),
-      access_token: token,
-      limit: "24",
-    });
+  const params = new URLSearchParams({
+    search_page_ids: JSON.stringify([pageId]),
+    ad_reached_countries: JSON.stringify(["FR"]),
+    ad_type: "ALL",
+    fields: [
+      "id",
+      "page_name",
+      "ad_creative_bodies",
+      "ad_creative_link_titles",
+      "ad_creative_link_descriptions",
+      "ad_snapshot_url",
+      "ad_delivery_start_time",
+      "ad_delivery_stop_time",
+      "impressions",
+    ].join(","),
+    access_token: token,
+    limit: "24",
+  });
 
-    const res = await fetch(
-      `https://graph.facebook.com/v21.0/ads_archive?${params}`
-    );
-    const data = await res.json();
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/ads_archive?${params}`
+  );
+  const data = await res.json();
 
-    if (data.error) {
-      console.error("Meta API error:", data.error);
-      return NextResponse.json(getMockAds(pageId));
-    }
-
-    return NextResponse.json(data.data ?? []);
-  } catch (err) {
-    console.error("Meta API fetch failed:", err);
-    return NextResponse.json(getMockAds(pageId));
+  if (data.error) {
+    console.error("Meta API error:", data.error);
+    return NextResponse.json({ error: data.error.message }, { status: 502 });
   }
+
+  return NextResponse.json(data.data ?? []);
 }
