@@ -1,8 +1,13 @@
-import "server-only";
-import { Client } from "@notionhq/client";
-
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
+const NOTION_API = "https://api.notion.com/v1";
 const DB_ID = process.env.NOTION_BRAND_DB_ID!;
+
+function headers() {
+  return {
+    Authorization: `Bearer ${process.env.NOTION_TOKEN}`,
+    "Content-Type": "application/json",
+    "Notion-Version": "2022-06-28",
+  };
+}
 
 export type NotionBrand = {
   id: string;
@@ -29,30 +34,25 @@ function parseBrand(page: any): NotionBrand {
 }
 
 export async function getBrands(): Promise<NotionBrand[]> {
-  const res = await notion.dataSources.query({
-    data_source_id: DB_ID,
-    sorts: [{ timestamp: "created_time", direction: "descending" }],
+  const res = await fetch(`${NOTION_API}/databases/${DB_ID}/query`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      sorts: [{ timestamp: "created_time", direction: "descending" }],
+    }),
   });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (res.results as any[]).filter((r) => r.object === "page").map(parseBrand);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Notion query failed: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  return data.results.map(parseBrand);
 }
 
 export async function getBrandById(id: string): Promise<NotionBrand | null> {
-  try {
-    const page = await notion.pages.retrieve({ page_id: id });
-    return parseBrand(page);
-  } catch {
-    return null;
-  }
-}
-
-export async function getBrandsByCategory(category: string): Promise<NotionBrand[]> {
-  const res = await notion.dataSources.query({
-    data_source_id: DB_ID,
-    filter: { property: "Categorie", rich_text: { equals: category } },
-  });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (res.results as any[]).filter((r) => r.object === "page").map(parseBrand);
+  const res = await fetch(`${NOTION_API}/pages/${id}`, { headers: headers() });
+  if (!res.ok) return null;
+  return parseBrand(await res.json());
 }
 
 export async function createBrand(data: {
@@ -60,29 +60,44 @@ export async function createBrand(data: {
   metaPageId: string;
   category: string;
 }): Promise<NotionBrand> {
-  const page = await notion.pages.create({
-    parent: { data_source_id: DB_ID },
-    properties: {
-      Nommarque: { title: [{ text: { content: data.name } }] },
-      ID: { rich_text: [{ text: { content: data.metaPageId } }] },
-      Categorie: { rich_text: [{ text: { content: data.category } }] },
-      Suivi: { checkbox: false },
-    },
+  const res = await fetch(`${NOTION_API}/pages`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      parent: { database_id: DB_ID },
+      properties: {
+        Nommarque: { title: [{ text: { content: data.name } }] },
+        ID: { rich_text: [{ text: { content: data.metaPageId } }] },
+        Categorie: { rich_text: [{ text: { content: data.category } }] },
+        Suivi: { checkbox: false },
+      },
+    }),
   });
-  return parseBrand(page);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Notion create failed: ${res.status} ${text}`);
+  }
+  return parseBrand(await res.json());
 }
 
 export async function archiveBrand(id: string): Promise<void> {
-  await notion.pages.update({ page_id: id, in_trash: true });
+  await fetch(`${NOTION_API}/pages/${id}`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({ archived: true }),
+  });
 }
 
 export async function toggleFollow(id: string): Promise<NotionBrand> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const page = (await notion.pages.retrieve({ page_id: id })) as any;
-  const current: boolean = page.properties.Suivi?.checkbox ?? false;
-  const updated = await notion.pages.update({
-    page_id: id,
-    properties: { Suivi: { checkbox: !current } },
+  const page = await getBrandById(id);
+  const current = page?.isFollowing ?? false;
+  const res = await fetch(`${NOTION_API}/pages/${id}`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({
+      properties: { Suivi: { checkbox: !current } },
+    }),
   });
-  return parseBrand(updated);
+  if (!res.ok) throw new Error(`Notion update failed: ${res.status}`);
+  return parseBrand(await res.json());
 }
