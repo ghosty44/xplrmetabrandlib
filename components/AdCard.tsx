@@ -1,7 +1,7 @@
 "use client";
 
 import type { MetaAd } from "@/lib/meta";
-import { Eye } from "lucide-react";
+import { Eye, ExternalLink } from "lucide-react";
 
 function formatDate(iso?: string) {
   if (!iso) return null;
@@ -31,43 +31,31 @@ interface Props {
 export default function AdCard({ ad, brandColor }: Props) {
   const body = ad.ad_creative_bodies?.[0];
   const title = ad.ad_creative_link_titles?.[0];
+  const desc = ad.ad_creative_link_descriptions?.[0];
   const imp = formatImpressions(ad.impressions);
   const date = formatDate(ad.ad_delivery_start_time);
-  const isMock = ad.id.startsWith("mock_");
 
   return (
     <div className="flex flex-col bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
       <div className="h-1 w-full shrink-0" style={{ background: brandColor }} />
 
-      {!isMock && ad.ad_snapshot_url && (
-        <div
-          className="w-full bg-gray-50 border-b border-gray-100 overflow-hidden"
-          style={{ height: 320 }}
-        >
-          <iframe
-            src={ad.ad_snapshot_url}
-            className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-            loading="lazy"
-            title={`Ad ${ad.id}`}
-          />
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2 p-3 flex-1">
+      <div className="flex flex-col gap-2 p-4 flex-1">
         {body && (
-          <p className="text-xs text-gray-700 leading-relaxed line-clamp-3">
+          <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">
             {body}
           </p>
         )}
         {title && (
-          <p className="text-xs font-semibold text-gray-800 line-clamp-1">
+          <p className="text-sm font-semibold text-gray-900 line-clamp-2">
             {title}
           </p>
         )}
+        {desc && (
+          <p className="text-xs text-gray-500 line-clamp-1">{desc}</p>
+        )}
       </div>
 
-      <div className="flex items-center justify-between px-3 pb-3 pt-0 gap-2">
+      <div className="flex items-center justify-between px-4 pb-4 pt-0 gap-2">
         <div className="flex items-center gap-3 text-xs text-gray-400 min-w-0">
           {date && <span>{date}</span>}
           {imp && (
@@ -77,6 +65,18 @@ export default function AdCard({ ad, brandColor }: Props) {
             </span>
           )}
         </div>
+
+        {ad.ad_snapshot_url && (
+          <a
+            href={ad.ad_snapshot_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 shrink-0"
+          >
+            <ExternalLink size={12} />
+            Voir
+          </a>
+        )}
       </div>
     </div>
   );
