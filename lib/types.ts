@@ -1,2 +1,42 @@
-export type { NotionBrand as Brand } from "@/lib/notion";
-export type { MetaAd as Ad } from "@/lib/meta";
+export type Zone = 'EF' | 'Seuil' | 'SSeuilVO2' | 'VO2max' | 'Recup' | 'Neutre';
+
+export type ZoneConfig = {
+  label: string;
+  color: string;
+  description: string;
+};
+
+export type Step = {
+  zone: Zone;
+  durationMin: number;
+  targetPace?: { minSec: number; maxSec: number }; // secondes/km
+  reps?: number;
+  isRecovery?: boolean;
+};
+
+export type Session = {
+  id: string;
+  name: string;
+  description?: string;
+  steps: Step[];
+  totalMin: number;
+  week: number;
+  day: number; // 1=Lundi...7=Dimanche
+  completed: boolean;
+  garminSynced?: boolean;
+};
+
+export type UserProfile = {
+  goalRace: 'marathon' | 'halfMarathon' | '10k' | '5k';
+  goalDate: string; // ISO date
+  goalTimeMin: number; // en minutes
+  weeklyKm: number;
+  thresholdPaceSec: number; // secondes/km au seuil
+};
+
+export type TrainingPlan = {
+  id: string;
+  profile: UserProfile;
+  sessions: Session[];
+  createdAt: string;
+};

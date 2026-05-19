@@ -1,78 +1,226 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import type { NotionBrand } from "@/lib/notion";
-import BrandList from "@/components/BrandList";
-import AdsPanel from "@/components/AdsPanel";
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { loadPlan } from '@/lib/store';
+import { TrainingPlan, Session } from '@/lib/types';
+import { getZoneConfig } from '@/lib/zones';
 
-export default function Home() {
-  const [brands, setBrands] = useState<NotionBrand[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<NotionBrand | null>(null);
+const DAY_LABELS = ['', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+const RACE_LABELS: Record<string, string> = {
+  marathon: 'Marathon',
+  halfMarathon: 'Semi-Marathon',
+  '10k': '10 km',
+  '5k': '5 km',
+};
 
-  const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
+function getDaysRemaining(goalDate: string): number {
+  const now = new Date();
+  const goal = new Date(goalDate);
+  const diff = goal.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
 
-  useEffect(() => {
-    fetch("/api/brands")
-      .then((r) => r.json())
-      .then((data: unknown) => {
-        const list = Array.isArray(data) ? (data as NotionBrand[]) : [];
-        setBrands(list);
-        if (list.length > 0) setSelected(list[0]);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+function formatGoalDate(goalDate: string): string {
+  return new Date(goalDate).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
 
-  const categories = useMemo(
-    () => [...new Set(brands.map((b) => b.category).filter(Boolean))].sort(),
-    [brands]
-  );
-
-  const filtered = useMemo(
-    () =>
-      brands.filter((b) => {
-        const matchSearch =
-          !search || b.name.toLowerCase().includes(search.toLowerCase());
-        const matchCategory =
-          !selectedCategory || b.category === selectedCategory;
-        return matchSearch && matchCategory;
-      }),
-    [brands, search, selectedCategory]
-  );
+function SessionCard({ session }: { session: Session }) {
+  const totalDuration = session.totalMin;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <div className="w-64 shrink-0 flex flex-col h-full">
-        {loading ? (
-          <div className="flex items-center justify-center flex-1 text-gray-400 text-sm">
-            Chargement…
+    <Link href={`/session/${session.id}`}>
+      <div
+        className={`rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md ${
+          session.completed
+            ? 'bg-green-50 border-green-200'
+            : 'bg-white border-gray-200 hover:border-gray-300'
+        }`}
+      >
+        <div className="flex items-start justify-between mb-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
+              {DAY_LABELS[session.day]}
+            </p>
+            <h3 className="text-sm font-semibold text-gray-800 leading-tight truncate">
+              {session.name}
+            </h3>
           </div>
-        ) : (
-          <BrandList
-            brands={filtered}
-            selected={selected}
-            onSelect={setSelected}
-            search={search}
-            onSearch={setSearch}
-            categories={categories}
-            selectedCategory={selectedCategory}
-            onCategory={setSelectedCategory}
-          />
-        )}
-      </div>
+          <div className="flex gap-1 ml-2 flex-shrink-0">
+            {session.completed && (
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white text-xs font-bold">
+                ✓
+              </span>
+            )}
+            {session.garminSynced && (
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-500 text-white text-xs font-bold">
+                G
+              </span>
+            )}
+          </div>
+        </div>
 
-      <div className="flex-1 flex flex-col min-w-0 h-full">
-        {selected ? (
-          <AdsPanel key={selected.id} brand={selected} />
-        ) : (
-          <div className="flex flex-col items-center justify-center flex-1 gap-2 text-gray-400">
-            <span className="text-4xl">👈</span>
-            <p className="text-sm">Sélectionne une marque</p>
-          </div>
-        )}
+        <p className="text-xs text-gray-500 mb-3">{totalDuration} min</p>
+
+        {/* Zone color bars */}
+        <div className="flex gap-0.5 h-2 rounded-full overflow-hidden">
+          {session.steps.map((step, i) => {
+            const config = getZoneConfig(step.zone);
+            const reps = step.reps ?? 1;
+            const width = (step.durationMin * reps) / totalDuration;
+            return (
+              <div
+                key={i}
+                style={{
+                  backgroundColor: config.color,
+                  flexBasis: `${width * 100}%`,
+                  flexShrink: 0,
+                  flexGrow: 0,
+                }}
+                title={config.label}
+              />
+            );
+          })}
+        </div>
       </div>
+    </Link>
+  );
+}
+
+function RestCard({ day }: { day: number }) {
+  return (
+    <div className="rounded-xl border border-gray-100 p-4 bg-gray-50">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
+        {DAY_LABELS[day]}
+      </p>
+      <p className="text-sm text-gray-400 italic">Repos</p>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const [plan, setPlan] = useState<TrainingPlan | null>(null);
+  const [currentWeek, setCurrentWeek] = useState(1);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const p = loadPlan();
+    if (!p) {
+      router.replace('/setup');
+      return;
+    }
+    setPlan(p);
+    setLoaded(true);
+  }, [router]);
+
+  if (!loaded || !plan) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const totalWeeks = Math.max(...plan.sessions.map((s) => s.week));
+  const weekSessions = plan.sessions.filter((s) => s.week === currentWeek);
+
+  // Build a map of sessions by day
+  const sessionByDay: Record<number, Session | null> = {};
+  for (let d = 1; d <= 7; d++) {
+    sessionByDay[d] = weekSessions.find((s) => s.day === d) ?? null;
+  }
+
+  const daysRemaining = getDaysRemaining(plan.profile.goalDate);
+  const raceLabel = RACE_LABELS[plan.profile.goalRace] ?? plan.profile.goalRace;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Campus Coach</h1>
+            <p className="text-sm text-gray-500">
+              {raceLabel} · {formatGoalDate(plan.profile.goalDate)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold text-gray-900">{daysRemaining}</p>
+            <p className="text-xs text-gray-500">jours restants</p>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 py-6">
+        {/* Week navigation */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => setCurrentWeek((w) => Math.max(1, w - 1))}
+            disabled={currentWeek === 1}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 disabled:opacity-40 hover:bg-gray-50 transition-colors"
+          >
+            ← Sem. précédente
+          </button>
+          <div className="text-center">
+            <h2 className="text-base font-semibold text-gray-800">Semaine {currentWeek}</h2>
+            <p className="text-xs text-gray-500">sur {totalWeeks} semaines</p>
+          </div>
+          <button
+            onClick={() => setCurrentWeek((w) => Math.min(totalWeeks, w + 1))}
+            disabled={currentWeek === totalWeeks}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 disabled:opacity-40 hover:bg-gray-50 transition-colors"
+          >
+            Sem. suivante →
+          </button>
+        </div>
+
+        {/* Weekly grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {[1, 2, 3, 4, 5, 6, 7].map((day) => {
+            const session = sessionByDay[day];
+            if (session) {
+              return <SessionCard key={day} session={session} />;
+            }
+            return <RestCard key={day} day={day} />;
+          })}
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-8 bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex justify-between text-sm text-gray-600 mb-2">
+            <span>Progression du plan</span>
+            <span>Sem. {currentWeek}/{totalWeeks}</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2">
+            <div
+              className="bg-gray-800 h-2 rounded-full transition-all"
+              style={{ width: `${(currentWeek / totalWeeks) * 100}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-3 text-xs text-gray-500">
+            <span>
+              {plan.sessions.filter((s) => s.completed).length} séances complétées
+            </span>
+            <span>{plan.sessions.length} séances au total</span>
+          </div>
+        </div>
+
+        {/* Reset link */}
+        <div className="mt-6 text-center">
+          <Link
+            href="/setup"
+            className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
+          >
+            Reconfigurer mon profil
+          </Link>
+        </div>
+      </main>
     </div>
   );
 }
