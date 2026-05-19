@@ -1,63 +1,53 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import {
-  getBrands,
-  getBrandById,
-  getBrandsByCategory,
-  type NotionBrand,
-} from "@/lib/notion";
+import { NextResponse } from "next/server";
+import { getMockAds } from "@/lib/mock-ads";
 
-const FALLBACK_BRAND = (id: string): NotionBrand => ({
-  id,
-  name: "Unknown",
-  metaPageId: "",
-  url: null,
-  isFollowing: false,
-  category: "",
-  createdAt: "",
-});
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const pageId = searchParams.get("pageId");
 
-export async function GET(req: NextRequest) {
+  if (!pageId) {
+    return NextResponse.json({ error: "pageId requis" }, { status: 400 });
+  }
+
+  const token = process.env.META_ACCESS_TOKEN;
+
+  if (!token) {
+    return NextResponse.json(getMockAds(pageId));
+  }
+
   try {
-    const { searchParams } = new URL(req.url);
-    const brandId = searchParams.get("brandId") ?? undefined;
-    const category = searchParams.get("category") ?? undefined;
-    const cursor = searchParams.get("cursor") ?? undefined;
-
-    // Resolve brand filter and pre-fetch brand(s) for the response map
-    const where: Record<string, unknown> = {};
-    let brandMap: Record<string, NotionBrand> = {};
-
-    if (brandId) {
-      where.brandId = brandId;
-      const b = await getBrandById(brandId);
-      if (b) brandMap[b.id] = b;
-    } else if (category) {
-      const brandsInCategory = await getBrandsByCategory(category);
-      for (const b of brandsInCategory) brandMap[b.id] = b;
-      where.brandId = { in: Object.keys(brandMap) };
-    } else {
-      const allBrands = await getBrands();
-      for (const b of allBrands) brandMap[b.id] = b;
-    }
-
-    const ads = await prisma.ad.findMany({
-      where,
-      orderBy: { fetchedAt: "desc" },
-      take: 48,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    const params = new URLSearchParams({
+      search_page_ids: JSON.stringify([pageId]),
+      ad_reached_countries: JSON.stringify(["FR"]),
+      ad_type: "ALL",
+      fields: [
+        "id",
+        "page_name",
+        "ad_creative_bodies",
+        "ad_creative_link_titles",
+        "ad_creative_link_descriptions",
+        "ad_snapshot_url",
+        "ad_delivery_start_time",
+        "ad_delivery_stop_time",
+        "impressions",
+      ].join(","),
+      access_token: token,
+      limit: "24",
     });
 
-    const adsWithBrand = ads.map((ad) => ({
-      ...ad,
-      brand: brandMap[ad.brandId] ?? FALLBACK_BRAND(ad.brandId),
-    }));
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/ads_archive?${params}`
+    );
+    const data = await res.json();
 
-    const nextCursor = ads.length === 48 ? ads[ads.length - 1].id : null;
+    if (data.error) {
+      console.error("Meta API error:", data.error);
+      return NextResponse.json(getMockAds(pageId));
+    }
 
-    return NextResponse.json({ ads: adsWithBrand, nextCursor });
-  } catch (error) {
-    console.error("GET /api/ads error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(data.data ?? []);
+  } catch (err) {
+    console.error("Meta API fetch failed:", err);
+    return NextResponse.json(getMockAds(pageId));
   }
 }

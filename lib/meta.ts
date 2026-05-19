@@ -5,8 +5,10 @@ export interface MetaAd {
   ad_creative_link_descriptions?: string[];
   ad_snapshot_url?: string;
   ad_delivery_start_time?: string;
+  ad_delivery_stop_time?: string;
   publisher_platforms?: string[];
   page_name?: string;
+  impressions?: { lower_bound: string; upper_bound: string };
 }
 
 export async function fetchAdsForBrand(
