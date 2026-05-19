@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { fetchAdsForBrand } from "@/lib/meta";
+import { getBrandById } from "@/lib/notion";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,7 +11,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "brandId is required" }, { status: 400 });
     }
 
-    const brand = await prisma.brand.findUnique({ where: { id: brandId } });
+    const brand = await getBrandById(brandId);
     if (!brand) {
       return NextResponse.json({ error: "Brand not found" }, { status: 404 });
     }

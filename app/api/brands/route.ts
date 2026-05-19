@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { getBrands, createBrand } from "@/lib/notion";
 import { fetchAdsForBrand } from "@/lib/meta";
+import { prisma } from "@/lib/db";
 
 export async function GET() {
   try {
-    const brands = await prisma.brand.findMany({
-      orderBy: { createdAt: "desc" },
-    });
+    const brands = await getBrands();
     return NextResponse.json(brands);
   } catch (error) {
     console.error("GET /api/brands error:", error);
@@ -26,9 +25,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const brand = await prisma.brand.create({
-      data: { name, metaPageId, category: category ?? "" },
-    });
+    const brand = await createBrand({ name, metaPageId, category: category ?? "" });
 
     // Trigger initial sync in background
     const token = process.env.META_ACCESS_TOKEN ?? "";
