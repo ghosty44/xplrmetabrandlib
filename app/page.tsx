@@ -16,12 +16,13 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/brands")
       .then((r) => r.json())
-      .then((data: NotionBrand[]) => {
-        setBrands(data);
-        if (data.length > 0) setSelected(data[0]);
-        setLoading(false);
+      .then((data: unknown) => {
+        const list = Array.isArray(data) ? (data as NotionBrand[]) : [];
+        setBrands(list);
+        if (list.length > 0) setSelected(list[0]);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const categories = useMemo(
