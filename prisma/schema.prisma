@@ -33,7 +33,7 @@ model Ad {
 }
 
 model Board {
-  id        String    @id @default(now())
+  id        String    @id @default(cuid())
   name      String
   createdAt DateTime  @default(now())
   boardAds  BoardAd[]
