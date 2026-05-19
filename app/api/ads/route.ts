@@ -18,6 +18,7 @@ export async function GET(request: Request) {
   try {
     const params = new URLSearchParams({
       search_page_ids: pageId,
+      ad_reached_countries: '["FR"]',
       ad_active_status: "ALL",
       ad_type: "ALL",
       fields: [
