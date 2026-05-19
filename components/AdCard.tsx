@@ -40,6 +40,16 @@ export default function AdCard({ ad, brandColor }: Props) {
       <div className="h-1 w-full shrink-0" style={{ background: brandColor }} />
 
       <div className="flex flex-col gap-2 p-4 flex-1">
+        {ad.ad_snapshot_url && (
+          <div className="w-full rounded-lg overflow-hidden bg-gray-50 border border-gray-100" style={{ height: 280 }}>
+            <iframe
+              src={`/api/snapshot?url=${encodeURIComponent(ad.ad_snapshot_url)}`}
+              className="w-full h-full border-0"
+              loading="lazy"
+              title={`Ad ${ad.id}`}
+            />
+          </div>
+        )}
         {body && (
           <p className="text-sm text-gray-700 leading-relaxed line-clamp-4">
             {body}
