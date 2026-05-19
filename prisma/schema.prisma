@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Brand {
+  id          String   @id @default(cuid())
+  name        String
+  metaPageId  String   @unique
+  category    String   @default("")
+  isFollowing Boolean  @default(false)
+  ads         Ad[]
+  createdAt   DateTime @default(now())
+}
+
+model Ad {
+  id              String    @id @default(cuid())
+  metaAdId        String    @unique
+  brand           Brand     @relation(fields: [brandId], references: [id])
+  brandId         String
+  snapshotUrl     String?
+  bodyText        String?
+  linkTitle       String?
+  linkDescription String?
+  platforms       String?
+  activeSince     DateTime?
+  fetchedAt       DateTime  @default(now())
+  boardAds        BoardAd[]
+}
+
+model Board {
+  id        String    @id @default(now())
+  name      String
+  createdAt DateTime  @default(now())
+  boardAds  BoardAd[]
+}
+
+model BoardAd {
+  board   Board    @relation(fields: [boardId], references: [id])
+  boardId String
+  ad      Ad       @relation(fields: [adId], references: [id])
+  adId    String
+  savedAt DateTime @default(now())
+
+  @@id([boardId, adId])
+}
