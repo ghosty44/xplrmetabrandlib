@@ -19,14 +19,22 @@ export type NotionBrand = {
   createdAt: string;
 };
 
+function extractPageId(url: string | null): string {
+  if (!url) return "";
+  const match = url.match(/view_all_page_id=(\d+)/);
+  return match?.[1] ?? "";
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseBrand(page: any): NotionBrand {
   const p = page.properties;
+  const url: string | null = p.URL?.url ?? null;
+  const explicitId: string = p.ID?.rich_text?.[0]?.plain_text ?? "";
   return {
     id: page.id,
     name: p.Nommarque?.title?.[0]?.plain_text ?? "",
-    metaPageId: p.ID?.rich_text?.[0]?.plain_text ?? "",
-    url: p.URL?.url ?? null,
+    metaPageId: explicitId || extractPageId(url),
+    url,
     isFollowing: p.Suivi?.checkbox ?? false,
     category: p.Categorie?.rich_text?.[0]?.plain_text ?? "",
     createdAt: page.created_time,
