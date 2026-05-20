@@ -162,6 +162,55 @@ export default function DashboardPage() {
   const [loaded, setLoaded] = useState(false);
   const [garminConnected, setGarminConnected] = useState(false);
   const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
+  const [notifState, setNotifState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+
+  const handleTestNotif = async () => {
+    setNotifState('loading');
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        alert('Notifications non supportées sur ce navigateur');
+        setNotifState('idle');
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') { setNotifState('idle'); return; }
+
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        });
+      }
+
+      const userId = loadUserId();
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, subscription: sub.toJSON() }),
+      });
+
+      await fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          title: 'Campus Coach',
+          body: 'Les notifications sont activées !',
+          url: '/',
+        }),
+      });
+      setNotifState('done');
+      setTimeout(() => setNotifState('idle'), 3000);
+    } catch (err) {
+      console.error(err);
+      setNotifState('error');
+      setTimeout(() => setNotifState('idle'), 3000);
+    }
+  };
 
   useEffect(() => {
     const local = loadPlan();
@@ -225,6 +274,14 @@ export default function DashboardPage() {
         <div className="max-w-md mx-auto px-4 pt-12 pb-3 flex items-center justify-between">
           <h1 className="text-[17px] font-bold text-[#0F0F10] tracking-tight">Campus Coach</h1>
           <div className="flex items-center gap-2">
+            {/* Bouton test notif temporaire */}
+            <button
+              onClick={handleTestNotif}
+              disabled={notifState === 'loading'}
+              className="h-8 px-3 rounded-full bg-[#0F0F10] text-white text-[11px] font-semibold disabled:opacity-50 transition-all active:scale-[0.96]"
+            >
+              {notifState === 'loading' ? '...' : notifState === 'done' ? '✓' : notifState === 'error' ? '✗' : 'Test notif'}
+            </button>
             {garminConnected && (
               <Link
                 href="/garmin"
