@@ -176,6 +176,7 @@ export default function DashboardPage() {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [garminConnected, setGarminConnected] = useState(false);
+  const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const local = loadPlan();
@@ -183,26 +184,34 @@ export default function DashboardPage() {
       setPlan(local);
       setGarminConnected(!!loadGarminTokens());
       setLoaded(true);
-      return;
+    } else {
+      const userId = loadUserId();
+      if (!userId) { router.replace('/setup'); return; }
+      fetch(`/api/profile?userId=${encodeURIComponent(userId)}`)
+        .then((r) => r.json())
+        .then((data: { plan?: TrainingPlan | null }) => {
+          if (data.plan) {
+            savePlan(data.plan);
+            setPlan(data.plan);
+            setGarminConnected(!!loadGarminTokens());
+            setLoaded(true);
+          } else {
+            router.replace('/setup');
+          }
+        })
+        .catch(() => router.replace('/setup'));
     }
+    // Load hero image from gallery
     const userId = loadUserId();
-    if (!userId) {
-      router.replace('/setup');
-      return;
+    if (userId) {
+      fetch(`/api/gallery?userId=${encodeURIComponent(userId)}`)
+        .then((r) => r.json())
+        .then((d: { images: Array<{ purpose: string; dataUrl: string }> }) => {
+          const hero = d.images?.find((i) => i.purpose === 'hero');
+          if (hero) setHeroDataUrl(hero.dataUrl);
+        })
+        .catch(() => {});
     }
-    fetch(`/api/profile?userId=${encodeURIComponent(userId)}`)
-      .then((r) => r.json())
-      .then((data: { plan?: TrainingPlan | null }) => {
-        if (data.plan) {
-          savePlan(data.plan);
-          setPlan(data.plan);
-          setGarminConnected(!!loadGarminTokens());
-          setLoaded(true);
-        } else {
-          router.replace('/setup');
-        }
-      })
-      .catch(() => router.replace('/setup'));
   }, [router]);
 
   if (!loaded || !plan) {
@@ -266,32 +275,49 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-md mx-auto px-4 pb-10 space-y-3">
-        {/* Hero card — dark with glow */}
-        <div className="relative rounded-[28px] bg-[#0F0F10] overflow-hidden p-6">
-          {/* Glow orbs */}
-          <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-[#C8E635]/20 blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
+        {/* Hero card */}
+        <div className="relative rounded-[28px] bg-[#0F0F10] overflow-hidden">
+          {/* Background image (from gallery) or glow orbs fallback */}
+          {heroDataUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={heroDataUrl}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{ objectPosition: 'center 35%' }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/40 to-black/80" />
+            </>
+          ) : (
+            <>
+              <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-[#C8E635]/20 blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
+            </>
+          )}
 
-          <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-1">{raceLabel}</p>
-          <div className="flex items-end gap-3 mb-1">
-            <span className="text-[72px] font-black text-white leading-none tabular-nums">{daysRemaining}</span>
-            <div className="mb-2">
-              <p className="text-[13px] font-medium text-[#8E8E93] leading-tight">jours</p>
-              <p className="text-[13px] font-medium text-[#8E8E93] leading-tight">restants</p>
+          <div className="relative p-6">
+            <p className="text-[10px] font-semibold text-white/50 uppercase tracking-[0.15em] mb-1">{raceLabel}</p>
+            <div className="flex items-end gap-3 mb-1">
+              <span className="text-[72px] font-black text-white leading-none tabular-nums">{daysRemaining}</span>
+              <div className="mb-2">
+                <p className="text-[13px] font-medium text-white/60 leading-tight">jours</p>
+                <p className="text-[13px] font-medium text-white/60 leading-tight">restants</p>
+              </div>
             </div>
-          </div>
-          <p className="text-[13px] text-[#8E8E93] mb-5">{formatGoalDate(plan.profile.goalDate)}</p>
+            <p className="text-[13px] text-white/50 mb-5">{formatGoalDate(plan.profile.goalDate)}</p>
 
-          {/* Week progress */}
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-medium text-[#8E8E93]">Semaine {currentWeek} / {totalWeeks}</span>
-            <span className="text-[11px] font-medium text-[#8E8E93]">{progressPct}%</span>
-          </div>
-          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-[#C8E635] rounded-full transition-all"
-              style={{ width: `${(currentWeek / totalWeeks) * 100}%` }}
-            />
+            {/* Week progress */}
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-medium text-white/50">Semaine {currentWeek} / {totalWeeks}</span>
+              <span className="text-[11px] font-medium text-white/50">{progressPct}%</span>
+            </div>
+            <div className="w-full h-1 bg-white/15 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#C8E635] rounded-full transition-all"
+                style={{ width: `${(currentWeek / totalWeeks) * 100}%` }}
+              />
+            </div>
           </div>
         </div>
 
