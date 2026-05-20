@@ -32,15 +32,27 @@ function SetupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showWelcome, setShowWelcome] = useState(true);
+  const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
   const [step, setStep] = useState<Step>(1);
 
   useEffect(() => {
     if (searchParams.get('force') === '1') {
       setShowWelcome(false);
-      return;
+    } else {
+      const existing = loadPlan();
+      if (existing) { router.replace('/'); return; }
     }
-    const existing = loadPlan();
-    if (existing) router.replace('/');
+    // Load hero image from gallery
+    const userId = loadUserId();
+    if (userId) {
+      fetch(`/api/gallery?userId=${encodeURIComponent(userId)}`)
+        .then((r) => r.json())
+        .then((d: { images: Array<{ purpose: string; dataUrl: string }> }) => {
+          const hero = d.images?.find((i) => i.purpose === 'hero');
+          if (hero) setHeroDataUrl(hero.dataUrl);
+        })
+        .catch(() => {});
+    }
   }, [router, searchParams]);
 
   const [goalRace, setGoalRace] = useState<UserProfile['goalRace']>('marathon');
@@ -126,17 +138,17 @@ function SetupPageContent() {
   const estimatedThreshold = getEstimatedThreshold();
 
   if (showWelcome) {
+    const heroSrc = heroDataUrl ?? '/hero-running.jpg';
     return (
       <div className="min-h-screen bg-[#0F0F10] relative overflow-hidden flex flex-col">
         {/* Hero image */}
         <div className="absolute inset-0">
-          <Image
-            src="/hero-running.jpg"
-            alt="Running"
-            fill
-            style={{ objectFit: 'cover', objectPosition: 'center 30%' }}
-            priority
-          />
+          {heroDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={heroSrc} alt="Running" className="w-full h-full object-cover" style={{ objectPosition: 'center 30%' }} />
+          ) : (
+            <Image src={heroSrc} alt="Running" fill style={{ objectFit: 'cover', objectPosition: 'center 30%' }} priority />
+          )}
           {/* Gradient: transparent top → dark bottom */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-[#0F0F10]" />
         </div>

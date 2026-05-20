@@ -242,6 +242,16 @@ export default function DashboardPage() {
               </Link>
             )}
             <Link
+              href="/gallery"
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-black/8"
+              title="Galerie"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                <path d="m21 15-5-5L5 21"/>
+              </svg>
+            </Link>
+            <Link
               href="/settings"
               className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-black/8"
               title="Paramètres"
