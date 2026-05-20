@@ -269,53 +269,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-[#F2F2F7]/80 backdrop-blur-xl">
-        <div className="max-w-md mx-auto px-4 pt-12 pb-3 flex items-center justify-between">
-          <h1 className="text-[17px] font-bold text-[#0F0F10] tracking-tight">Campus Coach</h1>
-          <div className="flex items-center gap-2">
-            {/* Bouton test notif temporaire */}
-            <button
-              onClick={handleTestNotif}
-              disabled={notifState === 'loading'}
-              className="h-8 px-3 rounded-full bg-[#0F0F10] text-white text-[11px] font-semibold disabled:opacity-50 transition-all active:scale-[0.96]"
-            >
-              {notifState === 'loading' ? '...' : notifState === 'done' ? '✓' : notifState === 'error' ? '✗' : 'Test notif'}
-            </button>
-            {garminConnected && (
-              <Link
-                href="/garmin"
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-[#C8E635]/20 text-[#0F0F10] font-bold text-xs"
-                title="Données Garmin"
-              >
-                G
-              </Link>
-            )}
-            <Link
-              href="/gallery"
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-black/8"
-              title="Galerie"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
-                <path d="m21 15-5-5L5 21"/>
-              </svg>
-            </Link>
-            <Link
-              href="/settings"
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-black/8"
-              title="Paramètres"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-md mx-auto px-4 pb-32 space-y-3">
+      <main className="max-w-md mx-auto px-4 pt-14 pb-32 space-y-3">
         {/* Hero card */}
         <div className="relative rounded-[28px] bg-[#0F0F10] overflow-hidden">
           {/* Background image (from gallery) or glow orbs fallback */}

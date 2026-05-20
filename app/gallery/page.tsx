@@ -104,41 +104,35 @@ export default function GalleryPage() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
-      <header className="sticky top-0 z-10 bg-[#F2F2F7]/80 backdrop-blur-xl">
-        <div className="max-w-md mx-auto px-4 pt-12 pb-3 flex items-center gap-3">
-          <Link href="/" className="w-8 h-8 rounded-full bg-white border border-black/8 flex items-center justify-center flex-shrink-0">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M9 2L4 7l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </Link>
-          <h1 className="text-[17px] font-bold text-[#0F0F10] flex-1">Galerie</h1>
-          {saving && <p className="text-[11px] text-[#8E8E93]">Sauvegarde…</p>}
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0F0F10] text-white text-[12px] font-semibold disabled:opacity-50"
-          >
-            {uploading ? '…' : (
-              <>
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                  <path d="M5.5 1v9M1 5.5h9" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-                Ajouter
-              </>
-            )}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => handleFiles(e.target.files)}
-          />
+      <main className="max-w-md mx-auto px-4 pt-14 pb-32">
+        <div className="flex items-center justify-between mb-4 px-1">
+          <h1 className="text-[28px] font-black text-[#0F0F10] tracking-tight">Galerie</h1>
+          <div className="flex items-center gap-2">
+            {saving && <p className="text-[11px] text-[#8E8E93]">Sauvegarde…</p>}
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0F0F10] text-white text-[12px] font-semibold disabled:opacity-50"
+            >
+              {uploading ? '…' : (
+                <>
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                    <path d="M5.5 1v9M1 5.5h9" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                  Ajouter
+                </>
+              )}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => handleFiles(e.target.files)}
+            />
+          </div>
         </div>
-      </header>
-
-      <main className="max-w-md mx-auto px-4 pb-32">
         {loading ? (
           <div className="grid grid-cols-2 gap-3 mt-2">
             {[0, 1, 2, 3].map((i) => (

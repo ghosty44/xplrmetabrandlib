@@ -94,7 +94,7 @@ export default function RouteEditorClient({
   // Init map
   useEffect(() => {
     if (!containerRef.current) return;
-    const map = L.map(containerRef.current, { attributionControl: false }).setView([48.856, 2.352], 13);
+    const map = L.map(containerRef.current, { attributionControl: false, zoomControl: false }).setView([48.856, 2.352], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
     mapRef.current = map;
 
@@ -177,7 +177,7 @@ export default function RouteEditorClient({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0F0F10] flex flex-col">
+    <div className="fixed inset-0 z-[200] bg-[#0F0F10] flex flex-col">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 pt-12 pb-3 bg-[#0F0F10]/90 backdrop-blur-sm">
         <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">

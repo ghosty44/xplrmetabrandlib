@@ -65,21 +65,8 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
-      <header className="sticky top-0 z-10 bg-[#F2F2F7]/80 backdrop-blur-xl">
-        <div className="max-w-md mx-auto px-4 pt-12 pb-3 flex items-center gap-3">
-          <Link
-            href="/"
-            className="w-8 h-8 rounded-full bg-white border border-black/8 flex items-center justify-center"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M9 2L4 7l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </Link>
-          <h1 className="text-[17px] font-bold text-[#0F0F10]">Paramètres</h1>
-        </div>
-      </header>
-
-      <main className="max-w-md mx-auto px-4 pb-32 space-y-3">
+      <main className="max-w-md mx-auto px-4 pt-14 pb-32 space-y-3">
+        <h1 className="text-[28px] font-black text-[#0F0F10] tracking-tight px-1 pb-1">Réglages</h1>
         {/* Garmin card */}
         <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
           <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-[#F2F2F7]">

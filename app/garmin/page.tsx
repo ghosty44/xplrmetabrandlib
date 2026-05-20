@@ -197,21 +197,17 @@ export default function GarminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
-      <header className="sticky top-0 z-10 bg-[#F2F2F7]/80 backdrop-blur-xl">
-        <div className="max-w-md mx-auto px-4 pt-12 pb-3 flex items-center gap-3">
-          <Link href="/" className="w-8 h-8 rounded-full bg-white border border-black/8 flex items-center justify-center flex-shrink-0">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M9 2L4 7l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </Link>
+      <main className="max-w-md mx-auto px-4 pt-14 pb-32 space-y-3">
+        {/* Title row */}
+        <div className="flex items-center gap-3 px-1 pb-1">
           <div className="flex-1">
-            <h1 className="text-[17px] font-bold text-[#0F0F10]">Garmin Connect</h1>
+            <h1 className="text-[28px] font-black text-[#0F0F10] tracking-tight">Garmin</h1>
             {profile && <p className="text-[11px] text-[#8E8E93]">{profile.fullName || profile.displayName}</p>}
           </div>
           <button
             onClick={handleRefresh}
             disabled={loading}
-            className="w-8 h-8 rounded-full bg-white border border-black/8 flex items-center justify-center disabled:opacity-40"
+            className="w-9 h-9 rounded-full bg-white border border-black/8 flex items-center justify-center disabled:opacity-40"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? 'animate-spin' : ''}>
               <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
@@ -220,7 +216,7 @@ export default function GarminDashboard() {
         </div>
 
         {/* Tab bar */}
-        <div className="max-w-md mx-auto px-4 pb-3 flex gap-1.5 overflow-x-auto no-scrollbar">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
           {(['overview', 'activities', 'sleep', 'health'] as const).map((tab) => (
             <button
               key={tab}
@@ -233,15 +229,10 @@ export default function GarminDashboard() {
             </button>
           ))}
         </div>
-      </header>
 
-      {error && error !== 'not_connected' && (
-        <div className="max-w-md mx-auto px-4 mb-3">
+        {error && error !== 'not_connected' && (
           <div className="rounded-[16px] bg-red-50 border border-red-100 p-4 text-[12px] text-red-600">{error}</div>
-        </div>
-      )}
-
-      <main className="max-w-md mx-auto px-4 pb-12 space-y-3">
+        )}
 
         {/* OVERVIEW */}
         {activeTab === 'overview' && (
