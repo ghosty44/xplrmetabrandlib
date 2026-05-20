@@ -20,11 +20,12 @@ function totalKm(pts: GpxPoint[]): number {
 }
 
 async function fetchRouteSegment(from: GpxPoint, to: GpxPoint): Promise<GpxPoint[]> {
-  const key = process.env.NEXT_PUBLIC_ORS_API_KEY;
-  if (key) {
+  // ORS (si clé configurée)
+  const orsKey = process.env.NEXT_PUBLIC_ORS_API_KEY;
+  if (orsKey) {
     try {
       const res = await fetch(
-        `https://api.openrouteservice.org/v2/directions/foot-walking?api_key=${key}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`,
+        `https://api.openrouteservice.org/v2/directions/foot-walking?api_key=${orsKey}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`,
         { headers: { Accept: 'application/json' } }
       );
       if (res.ok) {
@@ -32,9 +33,22 @@ async function fetchRouteSegment(from: GpxPoint, to: GpxPoint): Promise<GpxPoint
         const raw = data.features?.[0]?.geometry?.coordinates ?? [];
         if (raw.length > 0) return raw.map(([lng, lat]) => ({ lat, lng }));
       }
-    } catch { /* fall through to straight line */ }
+    } catch { /* fall through */ }
   }
-  // Fallback: straight line between the two points
+
+  // Fallback : serveur public OSRM (profil foot, sans clé API)
+  try {
+    const res = await fetch(
+      `https://router.project-osrm.org/route/v1/foot/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`
+    );
+    if (res.ok) {
+      const data = await res.json() as { routes?: Array<{ geometry: { coordinates: [number, number][] } }> };
+      const coords = data.routes?.[0]?.geometry?.coordinates ?? [];
+      if (coords.length > 0) return coords.map(([lng, lat]) => ({ lat, lng }));
+    }
+  } catch { /* fall through */ }
+
+  // Dernier recours : ligne droite
   return [from, to];
 }
 
@@ -57,7 +71,6 @@ export default function RouteEditorClient({
   const [loading, setLoading] = useState(false);
   const [waypointCount, setWaypointCount] = useState(0);
   const [distKm, setDistKm] = useState(0);
-  const hasORS = !!process.env.NEXT_PUBLIC_ORS_API_KEY;
 
   const flatCoords = useCallback((): GpxPoint[] => {
     const segs = routeSegmentsRef.current;
@@ -184,11 +197,6 @@ export default function RouteEditorClient({
       {/* Map */}
       <div className="flex-1 relative">
         <div ref={containerRef} className="w-full h-full" />
-        {!hasORS && (
-          <div className="absolute bottom-3 left-3 right-3 bg-black/70 rounded-[12px] px-3 py-2 pointer-events-none">
-            <p className="text-[11px] text-white/60 text-center">Mode simplifié · Ajouter NEXT_PUBLIC_ORS_API_KEY pour le routage routier</p>
-          </div>
-        )}
       </div>
 
       {/* Bottom controls */}
