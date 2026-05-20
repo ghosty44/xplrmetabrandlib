@@ -3,7 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { generatePlan } from '@/lib/plan';
-import { savePlan, saveProfile, saveGarminTokens, GarminTokens } from '@/lib/store';
+import { savePlan, saveProfile, saveGarminTokens, saveUserId, loadUserId, GarminTokens } from '@/lib/store';
 import { UserProfile } from '@/lib/types';
 import { formatPace } from '@/lib/zones';
 
@@ -76,7 +76,18 @@ export default function SetupPage() {
         thresholdPaceSec: getEstimatedThreshold(),
       };
       saveProfile(profile);
-      savePlan(generatePlan(profile));
+      const plan = generatePlan(profile);
+      savePlan(plan);
+
+      // Persist to DB — reuse existing userId or use plan.id
+      const userId = loadUserId() ?? plan.id;
+      saveUserId(userId);
+      fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, plan }),
+      }).catch(() => {}); // best-effort, localStorage is source of truth
+
       setIsSubmitting(false);
       setStep(4);
     }

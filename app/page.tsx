@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loadPlan, loadGarminTokens } from '@/lib/store';
+import { loadPlan, savePlan, loadUserId, loadGarminTokens } from '@/lib/store';
 import { TrainingPlan, Session } from '@/lib/types';
 import { getZoneConfig } from '@/lib/zones';
 
@@ -111,14 +111,32 @@ export default function DashboardPage() {
   const [garminConnected, setGarminConnected] = useState(false);
 
   useEffect(() => {
-    const p = loadPlan();
-    if (!p) {
+    const local = loadPlan();
+    if (local) {
+      setPlan(local);
+      setGarminConnected(!!loadGarminTokens());
+      setLoaded(true);
+      return;
+    }
+    // No localStorage — try to restore from DB
+    const userId = loadUserId();
+    if (!userId) {
       router.replace('/setup');
       return;
     }
-    setPlan(p);
-    setGarminConnected(!!loadGarminTokens());
-    setLoaded(true);
+    fetch(`/api/profile?userId=${encodeURIComponent(userId)}`)
+      .then((r) => r.json())
+      .then((data: { plan?: TrainingPlan | null }) => {
+        if (data.plan) {
+          savePlan(data.plan);
+          setPlan(data.plan);
+          setGarminConnected(!!loadGarminTokens());
+          setLoaded(true);
+        } else {
+          router.replace('/setup');
+        }
+      })
+      .catch(() => router.replace('/setup'));
   }, [router]);
 
   if (!loaded || !plan) {

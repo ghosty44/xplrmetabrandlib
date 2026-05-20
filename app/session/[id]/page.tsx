@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loadPlan, markSessionCompleted, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, GarminTokens } from '@/lib/store';
+import { loadPlan, markSessionCompleted, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, loadUserId, GarminTokens } from '@/lib/store';
 import { Session } from '@/lib/types';
 import { getZoneConfig, formatPace } from '@/lib/zones';
 
@@ -42,10 +42,22 @@ export default function SessionPage() {
     setLoaded(true);
   }, [params.id, router]);
 
+  function syncPlanToDB() {
+    const updated = loadPlan();
+    const userId = loadUserId();
+    if (!updated || !userId) return;
+    fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, plan: updated }),
+    }).catch(() => {});
+  }
+
   const handleComplete = () => {
     if (!session) return;
     markSessionCompleted(session.id);
     setSession((s) => s ? { ...s, completed: true } : s);
+    syncPlanToDB();
   };
 
   const handleGarminSync = async () => {
@@ -79,6 +91,7 @@ export default function SessionPage() {
         markSessionGarminSynced(session.id);
         setSession((s) => s ? { ...s, garminSynced: true } : s);
         setSyncResult({ success: true, message: `Synchronisé ! ID: ${data.workoutId ?? 'OK'}` });
+        syncPlanToDB();
       } else {
         setSyncResult({ success: false, message: data.error ?? 'Erreur inconnue' });
       }

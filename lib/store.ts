@@ -3,7 +3,22 @@ import { TrainingPlan, UserProfile } from './types';
 const PLAN_KEY = 'campus_coach_plan';
 const PROFILE_KEY = 'campus_coach_profile';
 const GARMIN_KEY = 'campus_coach_garmin_tokens';
+const USER_ID_KEY = 'campus_coach_user_id';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
+
+// ── User ID (stable key for DB row) ────────────────────────────────────────
+
+export function loadUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(USER_ID_KEY);
+}
+
+export function saveUserId(id: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(USER_ID_KEY, id);
+}
+
+// ── Garmin tokens ─────────────────────────────────────────────────────────
 
 export type GarminTokens = {
   oauth1: { oauth_token: string; oauth_token_secret: string };
