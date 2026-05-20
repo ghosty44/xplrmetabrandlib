@@ -14,7 +14,7 @@ export type GarminSyncResult = {
 function stepType(idx: number, total: number, isRecovery: boolean) {
   if (idx === 0) return { stepTypeId: 1, stepTypeKey: 'warmup' };
   if (idx === total - 1) return { stepTypeId: 2, stepTypeKey: 'cooldown' };
-  if (isRecovery) return { stepTypeId: 6, stepTypeKey: 'recovery' };
+  if (isRecovery) return { stepTypeId: 5, stepTypeKey: 'rest' };
   return { stepTypeId: 3, stepTypeKey: 'interval' };
 }
 
@@ -103,7 +103,6 @@ export async function syncSessionToGarmin(
         category: null,
         exerciseName: null,
         workoutProvider: null,
-        isRecovery,
       };
     });
 
