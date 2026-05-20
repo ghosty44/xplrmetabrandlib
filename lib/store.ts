@@ -7,24 +7,24 @@ const USER_ID_KEY = 'campus_coach_user_id';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // ── User ID (stable key for DB row) ────────────────────────────────────────
-// Stored in both localStorage AND a cookie so it survives URL/origin changes
-// (e.g. different Vercel preview deployments have different localStorage).
+// App mono-utilisateur : on utilise un ID fixe "solo" pour la DB.
+// localStorage + cookie sont des caches ; en leur absence, "solo" permet
+// toujours de retrouver le plan en DB sans aucun identifiant côté client.
 
+const SOLO_USER_ID = 'solo';
 const UID_COOKIE = 'cc_uid';
 const UID_MAX_AGE = 365 * 24 * 3600; // 1 an
 
-export function loadUserId(): string | null {
-  if (typeof window === 'undefined') return null;
+export function loadUserId(): string {
+  if (typeof window === 'undefined') return SOLO_USER_ID;
   const ls = localStorage.getItem(USER_ID_KEY);
   if (ls) return ls;
-  // Fallback: read cookie (persists across origins on same domain)
   const match = document.cookie.match(new RegExp(`(?:^|; )${UID_COOKIE}=([^;]+)`));
   if (match) {
-    // Re-hydrate localStorage from cookie
     localStorage.setItem(USER_ID_KEY, match[1]);
     return match[1];
   }
-  return null;
+  return SOLO_USER_ID;
 }
 
 export function saveUserId(id: string): void {

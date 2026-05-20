@@ -106,7 +106,7 @@ function SetupPageContent() {
       saveProfile(profile);
       const plan = generatePlan(profile);
       savePlan(plan);
-      const userId = loadUserId() ?? plan.id;
+      const userId = loadUserId(); // retourne toujours au moins "solo"
       saveUserId(userId);
       fetch('/api/profile', {
         method: 'POST',

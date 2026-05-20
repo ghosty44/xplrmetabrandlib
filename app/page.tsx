@@ -171,7 +171,6 @@ export default function DashboardPage() {
       setLoaded(true);
     } else {
       const userId = loadUserId();
-      if (!userId) { router.replace('/setup'); return; }
       fetch(`/api/profile?userId=${encodeURIComponent(userId)}`)
         .then((r) => r.json())
         .then((data: { plan?: TrainingPlan | null }) => {
