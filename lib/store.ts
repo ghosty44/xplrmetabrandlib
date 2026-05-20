@@ -7,15 +7,30 @@ const USER_ID_KEY = 'campus_coach_user_id';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // ── User ID (stable key for DB row) ────────────────────────────────────────
+// Stored in both localStorage AND a cookie so it survives URL/origin changes
+// (e.g. different Vercel preview deployments have different localStorage).
+
+const UID_COOKIE = 'cc_uid';
+const UID_MAX_AGE = 365 * 24 * 3600; // 1 an
 
 export function loadUserId(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(USER_ID_KEY);
+  const ls = localStorage.getItem(USER_ID_KEY);
+  if (ls) return ls;
+  // Fallback: read cookie (persists across origins on same domain)
+  const match = document.cookie.match(new RegExp(`(?:^|; )${UID_COOKIE}=([^;]+)`));
+  if (match) {
+    // Re-hydrate localStorage from cookie
+    localStorage.setItem(USER_ID_KEY, match[1]);
+    return match[1];
+  }
+  return null;
 }
 
 export function saveUserId(id: string): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(USER_ID_KEY, id);
+  document.cookie = `${UID_COOKIE}=${id}; max-age=${UID_MAX_AGE}; path=/; SameSite=Lax`;
 }
 
 // ── Garmin tokens ─────────────────────────────────────────────────────────

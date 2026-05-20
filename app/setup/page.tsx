@@ -112,7 +112,7 @@ function SetupPageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, plan }),
-      }).catch(() => {});
+      }).catch((err) => console.error('[DB] Plan save failed:', err));
       setIsSubmitting(false);
       setStep(4);
     }
