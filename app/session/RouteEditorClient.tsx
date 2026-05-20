@@ -20,13 +20,23 @@ function totalKm(pts: GpxPoint[]): number {
 }
 
 async function fetchRouteSegment(from: GpxPoint, to: GpxPoint): Promise<GpxPoint[]> {
-  // ORS (si clé configurée)
+  // ORS — profil foot-hiking : préfère chemins/sentiers, évite les grands axes
   const orsKey = process.env.NEXT_PUBLIC_ORS_API_KEY;
   if (orsKey) {
     try {
       const res = await fetch(
-        `https://api.openrouteservice.org/v2/directions/foot-walking?api_key=${orsKey}&start=${from.lng},${from.lat}&end=${to.lng},${to.lat}`,
-        { headers: { Accept: 'application/json' } }
+        'https://api.openrouteservice.org/v2/directions/foot-hiking/geojson',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: orsKey,
+          },
+          body: JSON.stringify({
+            coordinates: [[from.lng, from.lat], [to.lng, to.lat]],
+            options: { avoid_features: ['highways', 'tollways', 'ferries'] },
+          }),
+        }
       );
       if (res.ok) {
         const data = await res.json() as { features?: Array<{ geometry: { coordinates: [number, number][] } }> };
@@ -36,7 +46,7 @@ async function fetchRouteSegment(from: GpxPoint, to: GpxPoint): Promise<GpxPoint
     } catch { /* fall through */ }
   }
 
-  // Fallback : serveur public OSRM (profil foot, sans clé API)
+  // Fallback : OSRM public (profil foot)
   try {
     const res = await fetch(
       `https://router.project-osrm.org/route/v1/foot/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`
