@@ -1,4 +1,5 @@
 import { Session, UserProfile } from './types';
+import { ZONE_CONFIGS } from './zones';
 import type { GarminTokens } from './store';
 import { getSessionDate, formatDateYYYYMMDD } from './dates';
 
@@ -9,6 +10,13 @@ export type GarminSyncResult = {
   refreshedTokens?: GarminTokens;
   error?: string;
 };
+
+function stepType(idx: number, total: number, isRecovery: boolean) {
+  if (idx === 0) return { stepTypeId: 1, stepTypeKey: 'warmup' };
+  if (idx === total - 1) return { stepTypeId: 2, stepTypeKey: 'cooldown' };
+  if (isRecovery) return { stepTypeId: 6, stepTypeKey: 'recovery' };
+  return { stepTypeId: 3, stepTypeKey: 'interval' };
+}
 
 export async function loginGarmin(
   email: string,
@@ -53,16 +61,26 @@ export async function syncSessionToGarmin(
       await client.login();
     }
 
+    const total = session.steps.length;
     const workoutSteps = session.steps.map((step, idx) => {
       const reps = step.reps ?? 1;
       const durationSec = step.durationMin * 60 * reps;
+      const zoneLabel = ZONE_CONFIGS[step.zone]?.label ?? step.zone;
+      const isRecovery = step.isRecovery ?? false;
+
+      // Garmin pace targets are in m/s (speed), not sec/km
+      // minSec = faster pace (fewer sec/km = more m/s) → upper speed bound
+      // maxSec = slower pace (more sec/km = fewer m/s) → lower speed bound
+      const targetValueOne = step.targetPace ? 1000 / step.targetPace.maxSec : null;
+      const targetValueTwo = step.targetPace ? 1000 / step.targetPace.minSec : null;
+
       return {
         type: 'ExecutableStepDTO',
         stepId: idx + 1,
         stepOrder: idx + 1,
-        stepType: { stepTypeId: 3, stepTypeKey: 'interval' },
+        stepType: stepType(idx, total, isRecovery),
         childStepId: null,
-        description: null,
+        description: zoneLabel,
         endCondition: { conditionTypeId: 2, conditionTypeKey: 'time' },
         endConditionValue: durationSec,
         preferredEndConditionUnit: null,
@@ -70,8 +88,8 @@ export async function syncSessionToGarmin(
         targetType: step.targetPace
           ? { workoutTargetTypeId: 6, workoutTargetTypeKey: 'pace.zone' }
           : { workoutTargetTypeId: 1, workoutTargetTypeKey: 'no.target' },
-        targetValueOne: step.targetPace ? step.targetPace.minSec : null,
-        targetValueTwo: step.targetPace ? step.targetPace.maxSec : null,
+        targetValueOne,
+        targetValueTwo,
         targetValueUnit: null,
         zoneNumber: null,
         secondaryTargetType: null,
@@ -85,7 +103,7 @@ export async function syncSessionToGarmin(
         category: null,
         exerciseName: null,
         workoutProvider: null,
-        isRecovery: step.isRecovery ?? false,
+        isRecovery,
       };
     });
 
