@@ -372,15 +372,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Reset */}
-        <div className="pt-2 text-center">
-          <Link
-            href="/setup?force=1"
-            className="text-[12px] text-[#8E8E93] hover:text-[#0F0F10] transition-colors"
-          >
-            Reconfigurer mon profil
-          </Link>
-        </div>
       </main>
     </div>
   );

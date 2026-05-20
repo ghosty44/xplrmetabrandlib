@@ -1,11 +1,19 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { saveGarminTokens, loadGarminTokens, clearGarminTokens, garminTokensExpiresAt, GarminTokens } from '@/lib/store';
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [tokens, setTokens] = useState<GarminTokens | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const handleReset = useCallback(() => {
+    if (!confirmReset) { setConfirmReset(true); return; }
+    router.push('/setup?force=1');
+  }, [confirmReset, router]);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -167,13 +175,19 @@ export default function SettingsPage() {
 
         {/* Training plan card */}
         <div className="rounded-[24px] bg-white border border-black/5 p-5">
-          <p className="text-[13px] font-semibold text-[#0F0F10] mb-3">Plan d&apos;entraînement</p>
-          <Link
-            href="/setup?force=1"
-            className="block w-full py-3 rounded-[14px] bg-[#F2F2F7] text-[13px] font-semibold text-[#0F0F10] text-center transition-all active:scale-[0.98]"
+          <p className="text-[13px] font-semibold text-[#0F0F10] mb-1">Plan d&apos;entraînement</p>
+          <p className="text-[11px] text-[#8E8E93] mb-3">Crée un nouveau plan — l&apos;actuel sera remplacé.</p>
+          <button
+            onClick={handleReset}
+            onBlur={() => setConfirmReset(false)}
+            className={`w-full py-3 rounded-[14px] text-[13px] font-semibold transition-all active:scale-[0.98] ${
+              confirmReset
+                ? 'bg-red-500 text-white'
+                : 'bg-[#F2F2F7] text-[#0F0F10]'
+            }`}
           >
-            Reconfigurer mon profil
-          </Link>
+            {confirmReset ? 'Confirmer — effacer le plan actuel' : 'Reconfigurer mon profil'}
+          </button>
         </div>
       </main>
     </div>

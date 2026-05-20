@@ -31,16 +31,20 @@ function goalTimeToThresholdPace(goalTimeMin: number, raceKm: number): number {
 function SetupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [showWelcome, setShowWelcome] = useState(true);
+  // Lit localStorage de façon synchrone — pas de flash si plan existe déjà
+  const [showWelcome, setShowWelcome] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    if (new URLSearchParams(window.location.search).get('force') === '1') return false;
+    return !loadPlan();
+  });
   const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
   const [step, setStep] = useState<Step>(1);
 
   useEffect(() => {
-    if (searchParams.get('force') === '1') {
-      setShowWelcome(false);
-    } else {
-      const existing = loadPlan();
-      if (existing) { router.replace('/'); return; }
+    // Redirect si plan déjà là et pas en force
+    if (searchParams.get('force') !== '1' && loadPlan()) {
+      router.replace('/');
+      return;
     }
     // Load hero image from gallery
     const userId = loadUserId();
