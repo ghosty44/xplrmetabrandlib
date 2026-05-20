@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { prisma } from '@/lib/db';
 
-webpush.setVapidDetails(
-  process.env.VAPID_EMAIL!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
-
 // POST /api/push/send  { userId, title, body, url? }
 export async function POST(req: NextRequest) {
   try {
+    webpush.setVapidDetails(
+      process.env.VAPID_EMAIL!,
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+      process.env.VAPID_PRIVATE_KEY!
+    );
+
     const { userId, title, body, url } = await req.json() as {
       userId: string;
       title: string;
