@@ -79,7 +79,7 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto px-4 pb-10 space-y-3">
+      <main className="max-w-md mx-auto px-4 pb-32 space-y-3">
         {/* Garmin card */}
         <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
           <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-[#F2F2F7]">

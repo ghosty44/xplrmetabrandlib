@@ -138,7 +138,7 @@ export default function GalleryPage() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto px-4 pb-10">
+      <main className="max-w-md mx-auto px-4 pb-32">
         {loading ? (
           <div className="grid grid-cols-2 gap-3 mt-2">
             {[0, 1, 2, 3].map((i) => (

@@ -158,7 +158,7 @@ export default function SessionPage() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto px-4 pb-10 space-y-3">
+      <main className="max-w-md mx-auto px-4 pb-32 space-y-3">
         {/* Description */}
         {session.description && (
           <div className="rounded-[20px] bg-white border border-black/5 px-5 py-4">

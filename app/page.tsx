@@ -315,7 +315,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto px-4 pb-10 space-y-3">
+      <main className="max-w-md mx-auto px-4 pb-32 space-y-3">
         {/* Hero card */}
         <div className="relative rounded-[28px] bg-[#0F0F10] overflow-hidden">
           {/* Background image (from gallery) or glow orbs fallback */}
