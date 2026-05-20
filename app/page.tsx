@@ -6,6 +6,16 @@ import Link from 'next/link';
 import { loadPlan, savePlan, loadUserId, loadGarminTokens } from '@/lib/store';
 import { TrainingPlan, Session } from '@/lib/types';
 import { getZoneConfig } from '@/lib/zones';
+import { Zone } from '@/lib/types';
+
+const ZONE_SHORT: Record<Zone, string> = {
+  EF: 'EF',
+  Recup: 'Récup',
+  Neutre: 'Neutre',
+  Seuil: 'Seuil',
+  SSeuilVO2: 'S-VO2',
+  VO2max: 'VO2',
+};
 
 const DAY_LABELS = ['', 'LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
 const RACE_LABELS: Record<string, string> = {
@@ -69,7 +79,7 @@ function SessionCard({ session }: { session: Session }) {
 
         <p className="text-[11px] text-[#8E8E93] mb-2.5">{totalDuration} min</p>
 
-        <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden">
+        <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden mb-2.5">
           {session.steps.map((step, i) => {
             const config = getZoneConfig(step.zone);
             const reps = step.reps ?? 1;
@@ -85,6 +95,23 @@ function SessionCard({ session }: { session: Session }) {
                 }}
                 title={config.label}
               />
+            );
+          })}
+        </div>
+
+        {/* Zone chips */}
+        <div className="flex flex-wrap gap-1">
+          {Array.from(new Set(session.steps.filter((s) => !s.isRecovery).map((s) => s.zone))).map((zone) => {
+            const cfg = getZoneConfig(zone);
+            return (
+              <span
+                key={zone}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md"
+                style={{ backgroundColor: cfg.color + '22' }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
+                <span className="text-[9px] font-semibold text-[#0F0F10]">{ZONE_SHORT[zone]}</span>
+              </span>
             );
           })}
         </div>
