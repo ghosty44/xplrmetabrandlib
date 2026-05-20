@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 });
     }
 
-    const result = await syncSessionToGarmin(session, plan.profile, garminTokens);
+    const result = await syncSessionToGarmin(session, plan.profile, garminTokens, plan.createdAt);
     return NextResponse.json(result);
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Internal server error';

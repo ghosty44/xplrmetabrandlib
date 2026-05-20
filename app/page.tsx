@@ -7,6 +7,7 @@ import { loadPlan, savePlan, loadUserId, loadGarminTokens } from '@/lib/store';
 import { TrainingPlan, Session } from '@/lib/types';
 import { getZoneConfig } from '@/lib/zones';
 import { Zone } from '@/lib/types';
+import { getPlanStartMonday, getSessionDate } from '@/lib/dates';
 
 const ZONE_SHORT: Record<Zone, string> = {
   EF: 'EF',
@@ -25,22 +26,6 @@ const RACE_LABELS: Record<string, string> = {
   '5k': '5 km',
 };
 
-function getPlanStartMonday(createdAt: string): Date {
-  const d = new Date(createdAt);
-  const dow = d.getDay(); // 0=dim, 1=lun, ...6=sam
-  const diff = dow === 0 ? -6 : 1 - dow;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-}
-
-function getSessionDate(createdAt: string, week: number, day: number): Date {
-  const monday = getPlanStartMonday(createdAt);
-  const date = new Date(monday);
-  date.setDate(monday.getDate() + (week - 1) * 7 + (day - 1));
-  return date;
-}
 
 function formatDayMonth(date: Date): string {
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });

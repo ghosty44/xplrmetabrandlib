@@ -70,12 +70,13 @@ export default function SessionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: session.id, plan, garminTokens }),
       });
-      const data = await res.json() as { success: boolean; workoutId?: string; refreshedTokens?: GarminTokens; error?: string };
+      const data = await res.json() as { success: boolean; workoutId?: string; scheduledDate?: string; refreshedTokens?: GarminTokens; error?: string };
       if (data.success) {
         if (data.refreshedTokens) saveGarminTokens(data.refreshedTokens);
         markSessionGarminSynced(session.id);
         setSession((s) => s ? { ...s, garminSynced: true } : s);
-        setSyncResult({ success: true, message: `Synchronisé ! ID: ${data.workoutId ?? 'OK'}` });
+        const scheduleMsg = data.scheduledDate ? ` · Planifié le ${data.scheduledDate}` : '';
+        setSyncResult({ success: true, message: `Synchronisé dans ton calendrier Garmin !${scheduleMsg}` });
         syncPlanToDB();
       } else {
         setSyncResult({ success: false, message: data.error ?? 'Erreur inconnue' });

@@ -1,9 +1,11 @@
 import { Session, UserProfile } from './types';
 import type { GarminTokens } from './store';
+import { getSessionDate, formatDateYYYYMMDD } from './dates';
 
 export type GarminSyncResult = {
   success: boolean;
   workoutId?: string;
+  scheduledDate?: string;
   refreshedTokens?: GarminTokens;
   error?: string;
 };
@@ -27,7 +29,8 @@ export async function loginGarmin(
 export async function syncSessionToGarmin(
   session: Session,
   _profile: UserProfile,
-  tokens?: GarminTokens
+  tokens?: GarminTokens,
+  planCreatedAt?: string
 ): Promise<GarminSyncResult> {
   try {
     const { GarminConnect } = await import('garmin-connect');
@@ -125,10 +128,27 @@ export async function syncSessionToGarmin(
     const result = await client.addWorkout(workoutDetail as any);
     const workoutId = result?.workoutId ? String(result.workoutId) : undefined;
 
+    // Schedule the workout on the calendar if we have a date
+    let scheduledDate: string | undefined;
+    if (workoutId && planCreatedAt) {
+      const sessionDate = getSessionDate(planCreatedAt, session.week, session.day);
+      scheduledDate = formatDateYYYYMMDD(sessionDate);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (client as any).post(
+          `https://connectapi.garmin.com/workout-service/schedule/${workoutId}`,
+          { date: scheduledDate }
+        );
+      } catch {
+        // scheduling failed but workout was created — non-fatal
+        scheduledDate = undefined;
+      }
+    }
+
     // Export refreshed tokens so client can persist them
     const refreshedTokens = client.exportToken() as GarminTokens;
 
-    return { success: true, workoutId, refreshedTokens };
+    return { success: true, workoutId, scheduledDate, refreshedTokens };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error };
