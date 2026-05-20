@@ -2,6 +2,38 @@ import { TrainingPlan, UserProfile } from './types';
 
 const PLAN_KEY = 'campus_coach_plan';
 const PROFILE_KEY = 'campus_coach_profile';
+const GARMIN_KEY = 'campus_coach_garmin_tokens';
+
+export type GarminTokens = {
+  oauth1: { oauth_token: string; oauth_token_secret: string };
+  oauth2: {
+    scope: string; jti: string; access_token: string; token_type: string;
+    refresh_token: string; expires_in: number; refresh_token_expires_in: number;
+    expires_at: number; refresh_token_expires_at: number;
+    last_update_date: string; expires_date: string;
+  };
+};
+
+export function saveGarminTokens(tokens: GarminTokens): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(GARMIN_KEY, JSON.stringify(tokens));
+}
+
+export function loadGarminTokens(): GarminTokens | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(GARMIN_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as GarminTokens;
+  } catch {
+    return null;
+  }
+}
+
+export function clearGarminTokens(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(GARMIN_KEY);
+}
 
 export function savePlan(plan: TrainingPlan): void {
   if (typeof window === 'undefined') return;

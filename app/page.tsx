@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loadPlan } from '@/lib/store';
+import { loadPlan, loadGarminTokens } from '@/lib/store';
 import { TrainingPlan, Session } from '@/lib/types';
 import { getZoneConfig } from '@/lib/zones';
 
@@ -108,6 +108,7 @@ export default function DashboardPage() {
   const [plan, setPlan] = useState<TrainingPlan | null>(null);
   const [currentWeek, setCurrentWeek] = useState(1);
   const [loaded, setLoaded] = useState(false);
+  const [garminConnected, setGarminConnected] = useState(false);
 
   useEffect(() => {
     const p = loadPlan();
@@ -116,6 +117,7 @@ export default function DashboardPage() {
       return;
     }
     setPlan(p);
+    setGarminConnected(!!loadGarminTokens());
     setLoaded(true);
   }, [router]);
 
@@ -150,9 +152,24 @@ export default function DashboardPage() {
               {raceLabel} · {formatGoalDate(plan.profile.goalDate)}
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-2xl font-bold text-gray-900">{daysRemaining}</p>
-            <p className="text-xs text-gray-500">jours restants</p>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-2xl font-bold text-gray-900">{daysRemaining}</p>
+              <p className="text-xs text-gray-500">jours restants</p>
+            </div>
+            <Link
+              href="/settings"
+              className="flex flex-col items-center justify-center w-9 h-9 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+              title="Paramètres"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <span
+                className={`w-1.5 h-1.5 rounded-full mt-0.5 ${garminConnected ? 'bg-green-500' : 'bg-gray-300'}`}
+              />
+            </Link>
           </div>
         </div>
       </header>

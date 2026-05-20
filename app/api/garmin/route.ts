@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncSessionToGarmin } from '@/lib/garmin';
+import type { GarminTokens } from '@/lib/store';
 import { TrainingPlan } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as { sessionId: string; plan?: TrainingPlan };
-    const { sessionId, plan } = body;
+    const body = await req.json() as {
+      sessionId: string;
+      plan?: TrainingPlan;
+      garminTokens?: GarminTokens;
+    };
+    const { sessionId, plan, garminTokens } = body;
 
     if (!sessionId) {
       return NextResponse.json({ success: false, error: 'sessionId is required' }, { status: 400 });
@@ -23,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 });
     }
 
-    const result = await syncSessionToGarmin(session, plan.profile);
+    const result = await syncSessionToGarmin(session, plan.profile, garminTokens);
     return NextResponse.json(result);
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Internal server error';

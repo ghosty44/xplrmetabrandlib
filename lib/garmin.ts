@@ -1,27 +1,58 @@
 import { Session, UserProfile } from './types';
+import type { GarminTokens } from './store';
 
-export async function syncSessionToGarmin(
-  session: Session,
-  _profile: UserProfile
-): Promise<{ success: boolean; workoutId?: string; error?: string }> {
+export type GarminSyncResult = {
+  success: boolean;
+  workoutId?: string;
+  refreshedTokens?: GarminTokens;
+  error?: string;
+};
+
+export async function loginGarmin(
+  email: string,
+  password: string
+): Promise<{ success: boolean; tokens?: GarminTokens; error?: string }> {
   try {
-    const email = process.env.GARMIN_EMAIL;
-    const password = process.env.GARMIN_PASSWORD;
-
-    if (!email || !password) {
-      return { success: false, error: 'GARMIN_EMAIL and GARMIN_PASSWORD environment variables are required' };
-    }
-
-    // Dynamic import to avoid issues in non-server contexts
     const { GarminConnect } = await import('garmin-connect');
     const client = new GarminConnect({ username: email, password });
     await client.login();
+    const tokens = client.exportToken() as GarminTokens;
+    return { success: true, tokens };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Unknown error';
+    return { success: false, error };
+  }
+}
 
-    // Build workout steps for Garmin
+export async function syncSessionToGarmin(
+  session: Session,
+  _profile: UserProfile,
+  tokens?: GarminTokens
+): Promise<GarminSyncResult> {
+  try {
+    const { GarminConnect } = await import('garmin-connect');
+
+    let client: InstanceType<typeof GarminConnect>;
+
+    if (tokens) {
+      client = new GarminConnect({ username: '', password: '' });
+      client.loadToken(tokens.oauth1, tokens.oauth2);
+    } else {
+      const email = process.env.GARMIN_EMAIL;
+      const password = process.env.GARMIN_PASSWORD;
+      if (!email || !password) {
+        return {
+          success: false,
+          error: 'Aucun compte Garmin connecté. Connectez votre compte dans les Paramètres.',
+        };
+      }
+      client = new GarminConnect({ username: email, password });
+      await client.login();
+    }
+
     const workoutSteps = session.steps.map((step, idx) => {
       const reps = step.reps ?? 1;
       const durationSec = step.durationMin * 60 * reps;
-
       return {
         type: 'ExecutableStepDTO',
         stepId: idx + 1,
@@ -63,14 +94,9 @@ export async function syncSessionToGarmin(
       sportType: { sportTypeId: 1, sportTypeKey: 'running' },
       trainingPlanId: null,
       author: {
-        userProfilePk: null,
-        displayName: null,
-        fullName: null,
-        profileImgNameLarge: null,
-        profileImgNameMedium: null,
-        profileImgNameSmall: null,
-        userPro: false,
-        vivokidUser: false,
+        userProfilePk: null, displayName: null, fullName: null,
+        profileImgNameLarge: null, profileImgNameMedium: null, profileImgNameSmall: null,
+        userPro: false, vivokidUser: false,
       },
       estimatedDurationInSecs: session.totalMin * 60,
       estimatedDistanceInMeters: null,
@@ -99,7 +125,10 @@ export async function syncSessionToGarmin(
     const result = await client.addWorkout(workoutDetail as any);
     const workoutId = result?.workoutId ? String(result.workoutId) : undefined;
 
-    return { success: true, workoutId };
+    // Export refreshed tokens so client can persist them
+    const refreshedTokens = client.exportToken() as GarminTokens;
+
+    return { success: true, workoutId, refreshedTokens };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error };

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loadPlan, markSessionCompleted, markSessionGarminSynced } from '@/lib/store';
+import { loadPlan, markSessionCompleted, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, GarminTokens } from '@/lib/store';
 import { Session } from '@/lib/types';
 import { getZoneConfig, formatPace } from '@/lib/zones';
 
@@ -50,16 +50,32 @@ export default function SessionPage() {
 
   const handleGarminSync = async () => {
     if (!session) return;
+
+    const garminTokens = loadGarminTokens();
+    if (!garminTokens) {
+      setSyncResult({
+        success: false,
+        message: 'Connectez votre compte Garmin dans les Paramètres avant de synchroniser.',
+      });
+      return;
+    }
+
     setSyncing(true);
     setSyncResult(null);
     try {
       const res = await fetch('/api/garmin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: session.id, plan }),
+        body: JSON.stringify({ sessionId: session.id, plan, garminTokens }),
       });
-      const data = await res.json() as { success: boolean; workoutId?: string; error?: string };
+      const data = await res.json() as {
+        success: boolean;
+        workoutId?: string;
+        refreshedTokens?: GarminTokens;
+        error?: string;
+      };
       if (data.success) {
+        if (data.refreshedTokens) saveGarminTokens(data.refreshedTokens);
         markSessionGarminSynced(session.id);
         setSession((s) => s ? { ...s, garminSynced: true } : s);
         setSyncResult({ success: true, message: `Synchronisé ! ID: ${data.workoutId ?? 'OK'}` });
@@ -214,7 +230,12 @@ export default function SessionPage() {
                 : 'bg-red-50 border border-red-200 text-red-700'
             }`}
           >
-            {syncResult.success ? '✓ ' : '✗ '}{syncResult.message}
+            <p>{syncResult.success ? '✓ ' : '✗ '}{syncResult.message}</p>
+            {!syncResult.success && syncResult.message.includes('Paramètres') && (
+              <Link href="/settings" className="inline-block mt-1 text-xs underline underline-offset-2">
+                Aller aux Paramètres →
+              </Link>
+            )}
           </div>
         )}
 
