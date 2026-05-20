@@ -258,7 +258,7 @@ export default function DashboardPage() {
         {/* Reset link */}
         <div className="mt-6 text-center">
           <Link
-            href="/setup"
+            href="/setup?force=1"
             className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
           >
             Reconfigurer mon profil

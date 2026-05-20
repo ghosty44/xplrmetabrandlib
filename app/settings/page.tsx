@@ -172,7 +172,7 @@ export default function SettingsPage() {
         <div className="bg-white rounded-2xl border border-gray-200 p-5">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">Plan d&apos;entraînement</h2>
           <Link
-            href="/setup"
+            href="/setup?force=1"
             className="block w-full py-2.5 px-4 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors text-center"
           >
             Reconfigurer mon profil

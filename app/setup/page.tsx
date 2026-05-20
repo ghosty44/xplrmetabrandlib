@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, FormEvent, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { generatePlan } from '@/lib/plan';
-import { savePlan, saveProfile, saveGarminTokens, saveUserId, loadUserId, GarminTokens } from '@/lib/store';
+import { savePlan, saveProfile, saveGarminTokens, saveUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
 import { UserProfile } from '@/lib/types';
 import { formatPace } from '@/lib/zones';
 
@@ -25,9 +25,19 @@ function goalTimeToThresholdPace(goalTimeMin: number, raceKm: number): number {
   return Math.round(avgPaceSec * 0.92);
 }
 
-export default function SetupPage() {
+function SetupPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>(1);
+
+  // Redirect to dashboard if a plan already exists (unless ?force=1)
+  useEffect(() => {
+    if (searchParams.get('force') === '1') return;
+    const existing = loadPlan();
+    if (existing) {
+      router.replace('/');
+    }
+  }, [router, searchParams]);
 
   // Steps 1-3
   const [goalRace, setGoalRace] = useState<UserProfile['goalRace']>('marathon');
@@ -403,5 +413,13 @@ export default function SetupPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function SetupPage() {
+  return (
+    <Suspense>
+      <SetupPageContent />
+    </Suspense>
   );
 }
