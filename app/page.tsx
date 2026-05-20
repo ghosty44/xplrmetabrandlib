@@ -7,7 +7,7 @@ import { loadPlan, savePlan, loadUserId, loadGarminTokens } from '@/lib/store';
 import { TrainingPlan, Session } from '@/lib/types';
 import { getZoneConfig } from '@/lib/zones';
 
-const DAY_LABELS = ['', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+const DAY_LABELS = ['', 'LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
 const RACE_LABELS: Record<string, string> = {
   marathon: 'Marathon',
   halfMarathon: 'Semi-Marathon',
@@ -36,39 +36,40 @@ function SessionCard({ session }: { session: Session }) {
   return (
     <Link href={`/session/${session.id}`}>
       <div
-        className={`rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md ${
+        className={`rounded-[20px] p-4 cursor-pointer transition-all active:scale-[0.97] ${
           session.completed
-            ? 'bg-green-50 border-green-200'
-            : 'bg-white border-gray-200 hover:border-gray-300'
+            ? 'bg-[#C8E635]/15 border border-[#C8E635]/30'
+            : 'bg-white border border-black/5 hover:border-black/10'
         }`}
       >
-        <div className="flex items-start justify-between mb-2">
+        <div className="flex items-start justify-between mb-3">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
+            <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.12em] mb-1">
               {DAY_LABELS[session.day]}
             </p>
-            <h3 className="text-sm font-semibold text-gray-800 leading-tight truncate">
+            <h3 className="text-sm font-semibold text-[#0F0F10] leading-tight truncate">
               {session.name}
             </h3>
           </div>
           <div className="flex gap-1 ml-2 flex-shrink-0">
             {session.completed && (
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white text-xs font-bold">
-                ✓
-              </span>
+              <div className="w-5 h-5 rounded-full bg-[#C8E635] flex items-center justify-center">
+                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                  <path d="M1 4l2.5 2.5L9 1" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
             )}
             {session.garminSynced && (
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-500 text-white text-xs font-bold">
-                G
-              </span>
+              <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                <span className="text-white text-[9px] font-bold">G</span>
+              </div>
             )}
           </div>
         </div>
 
-        <p className="text-xs text-gray-500 mb-3">{totalDuration} min</p>
+        <p className="text-[11px] text-[#8E8E93] mb-2.5">{totalDuration} min</p>
 
-        {/* Zone color bars */}
-        <div className="flex gap-0.5 h-2 rounded-full overflow-hidden">
+        <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden">
           {session.steps.map((step, i) => {
             const config = getZoneConfig(step.zone);
             const reps = step.reps ?? 1;
@@ -94,11 +95,11 @@ function SessionCard({ session }: { session: Session }) {
 
 function RestCard({ day }: { day: number }) {
   return (
-    <div className="rounded-xl border border-gray-100 p-4 bg-gray-50">
-      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-0.5">
+    <div className="rounded-[20px] p-4 bg-white/50 border border-black/5">
+      <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.12em] mb-1">
         {DAY_LABELS[day]}
       </p>
-      <p className="text-sm text-gray-400 italic">Repos</p>
+      <p className="text-sm text-[#8E8E93]">Repos</p>
     </div>
   );
 }
@@ -118,7 +119,6 @@ export default function DashboardPage() {
       setLoaded(true);
       return;
     }
-    // No localStorage — try to restore from DB
     const userId = loadUserId();
     if (!userId) {
       router.replace('/setup');
@@ -141,16 +141,14 @@ export default function DashboardPage() {
 
   if (!loaded || !plan) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center">
+        <div className="w-7 h-7 border-2 border-[#8E8E93]/30 border-t-[#0F0F10] rounded-full animate-spin" />
       </div>
     );
   }
 
   const totalWeeks = Math.max(...plan.sessions.map((s) => s.week));
   const weekSessions = plan.sessions.filter((s) => s.week === currentWeek);
-
-  // Build a map of sessions by day
   const sessionByDay: Record<number, Session | null> = {};
   for (let d = 1; d <= 7; d++) {
     sessionByDay[d] = weekSessions.find((s) => s.day === d) ?? null;
@@ -158,27 +156,20 @@ export default function DashboardPage() {
 
   const daysRemaining = getDaysRemaining(plan.profile.goalDate);
   const raceLabel = RACE_LABELS[plan.profile.goalRace] ?? plan.profile.goalRace;
+  const completedCount = plan.sessions.filter((s) => s.completed).length;
+  const progressPct = Math.round((completedCount / plan.sessions.length) * 100);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#F2F2F7]">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Campus Coach</h1>
-            <p className="text-sm text-gray-500">
-              {raceLabel} · {formatGoalDate(plan.profile.goalDate)}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-2xl font-bold text-gray-900">{daysRemaining}</p>
-              <p className="text-xs text-gray-500">jours restants</p>
-            </div>
+      <header className="sticky top-0 z-10 bg-[#F2F2F7]/80 backdrop-blur-xl">
+        <div className="max-w-md mx-auto px-4 pt-12 pb-3 flex items-center justify-between">
+          <h1 className="text-[17px] font-bold text-[#0F0F10] tracking-tight">Campus Coach</h1>
+          <div className="flex items-center gap-2">
             {garminConnected && (
               <Link
                 href="/garmin"
-                className="flex items-center justify-center w-9 h-9 rounded-lg border border-green-200 bg-green-50 hover:bg-green-100 transition-colors text-green-700 font-bold text-sm"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-[#C8E635]/20 text-[#0F0F10] font-bold text-xs"
                 title="Données Garmin"
               >
                 G
@@ -186,80 +177,103 @@ export default function DashboardPage() {
             )}
             <Link
               href="/settings"
-              className="flex flex-col items-center justify-center w-9 h-9 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-white border border-black/8"
               title="Paramètres"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
                 <circle cx="12" cy="12" r="3"/>
               </svg>
-              <span
-                className={`w-1.5 h-1.5 rounded-full mt-0.5 ${garminConnected ? 'bg-green-500' : 'bg-gray-300'}`}
-              />
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        {/* Week navigation */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={() => setCurrentWeek((w) => Math.max(1, w - 1))}
-            disabled={currentWeek === 1}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 disabled:opacity-40 hover:bg-gray-50 transition-colors"
-          >
-            ← Sem. précédente
-          </button>
-          <div className="text-center">
-            <h2 className="text-base font-semibold text-gray-800">Semaine {currentWeek}</h2>
-            <p className="text-xs text-gray-500">sur {totalWeeks} semaines</p>
-          </div>
-          <button
-            onClick={() => setCurrentWeek((w) => Math.min(totalWeeks, w + 1))}
-            disabled={currentWeek === totalWeeks}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 disabled:opacity-40 hover:bg-gray-50 transition-colors"
-          >
-            Sem. suivante →
-          </button>
-        </div>
+      <main className="max-w-md mx-auto px-4 pb-10 space-y-3">
+        {/* Hero card — dark with glow */}
+        <div className="relative rounded-[28px] bg-[#0F0F10] overflow-hidden p-6">
+          {/* Glow orbs */}
+          <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full bg-[#C8E635]/20 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-10 -left-6 w-32 h-32 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
 
-        {/* Weekly grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {[1, 2, 3, 4, 5, 6, 7].map((day) => {
-            const session = sessionByDay[day];
-            if (session) {
-              return <SessionCard key={day} session={session} />;
-            }
-            return <RestCard key={day} day={day} />;
-          })}
-        </div>
-
-        {/* Progress bar */}
-        <div className="mt-8 bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex justify-between text-sm text-gray-600 mb-2">
-            <span>Progression du plan</span>
-            <span>Sem. {currentWeek}/{totalWeeks}</span>
+          <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-1">{raceLabel}</p>
+          <div className="flex items-end gap-3 mb-1">
+            <span className="text-[72px] font-black text-white leading-none tabular-nums">{daysRemaining}</span>
+            <div className="mb-2">
+              <p className="text-[13px] font-medium text-[#8E8E93] leading-tight">jours</p>
+              <p className="text-[13px] font-medium text-[#8E8E93] leading-tight">restants</p>
+            </div>
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
+          <p className="text-[13px] text-[#8E8E93] mb-5">{formatGoalDate(plan.profile.goalDate)}</p>
+
+          {/* Week progress */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-medium text-[#8E8E93]">Semaine {currentWeek} / {totalWeeks}</span>
+            <span className="text-[11px] font-medium text-[#8E8E93]">{progressPct}%</span>
+          </div>
+          <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
             <div
-              className="bg-gray-800 h-2 rounded-full transition-all"
+              className="h-full bg-[#C8E635] rounded-full transition-all"
               style={{ width: `${(currentWeek / totalWeeks) * 100}%` }}
             />
           </div>
-          <div className="flex justify-between mt-3 text-xs text-gray-500">
-            <span>
-              {plan.sessions.filter((s) => s.completed).length} séances complétées
-            </span>
-            <span>{plan.sessions.length} séances au total</span>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-[24px] bg-white border border-black/5 p-5">
+            <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.12em] mb-2">Complétées</p>
+            <p className="text-4xl font-black text-[#0F0F10] tabular-nums leading-none mb-1">{completedCount}</p>
+            <p className="text-[11px] text-[#8E8E93]">sur {plan.sessions.length} séances</p>
+          </div>
+          <div className="rounded-[24px] bg-[#C8E635] p-5">
+            <p className="text-[10px] font-semibold text-[#0F0F10]/60 uppercase tracking-[0.12em] mb-2">Semaine</p>
+            <p className="text-4xl font-black text-[#0F0F10] tabular-nums leading-none mb-1">{currentWeek}</p>
+            <p className="text-[11px] text-[#0F0F10]/60">sur {totalWeeks} semaines</p>
           </div>
         </div>
 
-        {/* Reset link */}
-        <div className="mt-6 text-center">
+        {/* Week navigation + sessions */}
+        <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+          <div className="flex items-center justify-between px-5 pt-5 pb-4">
+            <button
+              onClick={() => setCurrentWeek((w) => Math.max(1, w - 1))}
+              disabled={currentWeek === 1}
+              className="w-8 h-8 rounded-full bg-[#F2F2F7] flex items-center justify-center disabled:opacity-30 transition-opacity"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 2L4 7l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            <div className="text-center">
+              <p className="text-[15px] font-bold text-[#0F0F10]">Semaine {currentWeek}</p>
+              <p className="text-[11px] text-[#8E8E93]">sur {totalWeeks} semaines</p>
+            </div>
+            <button
+              onClick={() => setCurrentWeek((w) => Math.min(totalWeeks, w + 1))}
+              disabled={currentWeek === totalWeeks}
+              className="w-8 h-8 rounded-full bg-[#F2F2F7] flex items-center justify-center disabled:opacity-30 transition-opacity"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M5 2l5 5-5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+            {[1, 2, 3, 4, 5, 6, 7].map((day) => {
+              const session = sessionByDay[day];
+              if (session) return <SessionCard key={day} session={session} />;
+              return <RestCard key={day} day={day} />;
+            })}
+          </div>
+        </div>
+
+        {/* Reset */}
+        <div className="pt-2 text-center">
           <Link
             href="/setup?force=1"
-            className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2"
+            className="text-[12px] text-[#8E8E93] hover:text-[#0F0F10] transition-colors"
           >
             Reconfigurer mon profil
           </Link>

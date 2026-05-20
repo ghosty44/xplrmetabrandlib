@@ -7,7 +7,6 @@ import { loadPlan, markSessionCompleted, markSessionGarminSynced, loadGarminToke
 import { Session } from '@/lib/types';
 import { getZoneConfig, formatPace } from '@/lib/zones';
 
-// Intensity height for each zone (0..1)
 const ZONE_INTENSITY: Record<string, number> = {
   Recup: 0.2,
   EF: 0.35,
@@ -16,6 +15,8 @@ const ZONE_INTENSITY: Record<string, number> = {
   Seuil: 0.8,
   VO2max: 1.0,
 };
+
+const DAY_LABELS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
 export default function SessionPage() {
   const params = useParams<{ id: string }>();
@@ -28,15 +29,9 @@ export default function SessionPage() {
 
   useEffect(() => {
     const p = loadPlan();
-    if (!p) {
-      router.replace('/setup');
-      return;
-    }
+    if (!p) { router.replace('/setup'); return; }
     const found = p.sessions.find((s) => s.id === params.id);
-    if (!found) {
-      router.replace('/');
-      return;
-    }
+    if (!found) { router.replace('/'); return; }
     setPlan(p);
     setSession(found);
     setLoaded(true);
@@ -62,16 +57,11 @@ export default function SessionPage() {
 
   const handleGarminSync = async () => {
     if (!session) return;
-
     const garminTokens = loadGarminTokens();
     if (!garminTokens) {
-      setSyncResult({
-        success: false,
-        message: 'Connectez votre compte Garmin dans les Paramètres avant de synchroniser.',
-      });
+      setSyncResult({ success: false, message: 'Connectez votre compte Garmin dans les Paramètres avant de synchroniser.' });
       return;
     }
-
     setSyncing(true);
     setSyncResult(null);
     try {
@@ -80,12 +70,7 @@ export default function SessionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: session.id, plan, garminTokens }),
       });
-      const data = await res.json() as {
-        success: boolean;
-        workoutId?: string;
-        refreshedTokens?: GarminTokens;
-        error?: string;
-      };
+      const data = await res.json() as { success: boolean; workoutId?: string; refreshedTokens?: GarminTokens; error?: string };
       if (data.success) {
         if (data.refreshedTokens) saveGarminTokens(data.refreshedTokens);
         markSessionGarminSynced(session.id);
@@ -104,68 +89,78 @@ export default function SessionPage() {
 
   if (!loaded || !session) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-800 rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center">
+        <div className="w-7 h-7 border-2 border-[#8E8E93]/30 border-t-[#0F0F10] rounded-full animate-spin" />
       </div>
     );
   }
 
   const totalMin = session.totalMin;
+  const uniqueZones = Array.from(new Set(session.steps.map((s) => s.zone)));
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#F2F2F7]">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-4">
-          <Link href="/" className="text-gray-500 hover:text-gray-800 transition-colors">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 4l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+      <header className="sticky top-0 z-10 bg-[#F2F2F7]/80 backdrop-blur-xl">
+        <div className="max-w-md mx-auto px-4 pt-12 pb-3 flex items-center gap-3">
+          <Link
+            href="/"
+            className="w-8 h-8 rounded-full bg-white border border-black/8 flex items-center justify-center flex-shrink-0"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M9 2L4 7l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </Link>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-gray-900 truncate">{session.name}</h1>
+              <h1 className="text-[17px] font-bold text-[#0F0F10] truncate">{session.name}</h1>
               {session.completed && (
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500 text-white text-xs font-bold flex-shrink-0">
-                  ✓
-                </span>
+                <div className="w-5 h-5 rounded-full bg-[#C8E635] flex items-center justify-center flex-shrink-0">
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                    <path d="M1 4l2.5 2.5L9 1" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
               )}
               {session.garminSynced && (
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-500 text-white text-xs font-bold flex-shrink-0">
-                  G
-                </span>
+                <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-[9px] font-bold">G</span>
+                </div>
               )}
             </div>
-            <p className="text-xs text-gray-500">Semaine {session.week} · {totalMin} min</p>
+            <p className="text-[11px] text-[#8E8E93]">
+              {DAY_LABELS[session.day]} · Sem. {session.week} · {totalMin} min
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6">
-        {/* Session description */}
+      <main className="max-w-md mx-auto px-4 pb-10 space-y-3">
+        {/* Description */}
         {session.description && (
-          <p className="text-sm text-gray-600 mb-5">{session.description}</p>
+          <div className="rounded-[20px] bg-white border border-black/5 px-5 py-4">
+            <p className="text-[13px] text-[#8E8E93] leading-relaxed">{session.description}</p>
+          </div>
         )}
 
-        {/* Interval chart */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Graphique des intervalles</h2>
-          <div className="flex items-end gap-0.5 h-24">
+        {/* Interval chart card */}
+        <div className="rounded-[24px] bg-[#0F0F10] overflow-hidden p-5">
+          <div className="absolute opacity-0 pointer-events-none" />
+          <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-4">Graphique des intervalles</p>
+
+          <div className="flex items-end gap-0.5 h-20 mb-4">
             {session.steps.map((step, idx) => {
               const reps = step.reps ?? 1;
               const config = getZoneConfig(step.zone);
               const intensity = ZONE_INTENSITY[step.zone] ?? 0.5;
               const widthPct = (step.durationMin * reps) / totalMin;
-              const heightPct = intensity;
-
               return (
                 <div
                   key={idx}
-                  className="rounded-t-sm flex-shrink-0"
+                  className="rounded-t-[4px] flex-shrink-0"
                   style={{
                     backgroundColor: config.color,
                     width: `${widthPct * 100}%`,
-                    height: `${heightPct * 100}%`,
+                    height: `${intensity * 100}%`,
                   }}
                   title={`${config.label} – ${step.durationMin * reps} min`}
                 />
@@ -173,14 +168,13 @@ export default function SessionPage() {
             })}
           </div>
 
-          {/* Zone legend */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
-            {Array.from(new Set(session.steps.map((s) => s.zone))).map((zone) => {
+          <div className="flex flex-wrap gap-3">
+            {uniqueZones.map((zone) => {
               const cfg = getZoneConfig(zone);
               return (
                 <div key={zone} className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: cfg.color }} />
-                  <span className="text-xs text-gray-600">{cfg.label}</span>
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
+                  <span className="text-[11px] text-[#8E8E93]">{cfg.label}</span>
                 </div>
               );
             })}
@@ -188,45 +182,40 @@ export default function SessionPage() {
         </div>
 
         {/* Steps list */}
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden mb-4">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-700">Détail des étapes</h2>
+        <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#F2F2F7]">
+            <p className="text-[13px] font-semibold text-[#0F0F10]">Détail des étapes</p>
           </div>
           {session.steps.map((step, idx) => {
             const config = getZoneConfig(step.zone);
             const reps = step.reps ?? 1;
             const effectiveDuration = step.durationMin * reps;
-
             return (
-              <div key={idx} className="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50 last:border-0">
+              <div key={idx} className="flex items-center gap-4 px-5 py-3.5 border-b border-[#F2F2F7]/80 last:border-0">
                 <div
                   className="w-1 self-stretch rounded-full flex-shrink-0"
                   style={{ backgroundColor: config.color, minHeight: '36px' }}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-sm font-medium text-gray-800">{config.label}</span>
+                    <span className="text-[13px] font-semibold text-[#0F0F10]">{config.label}</span>
                     {step.isRecovery && (
-                      <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">récup</span>
+                      <span className="text-[10px] bg-[#F2F2F7] text-[#8E8E93] px-1.5 py-0.5 rounded-md font-medium">récup</span>
                     )}
                     {reps > 1 && (
-                      <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
-                        ×{reps}
-                      </span>
+                      <span className="text-[10px] bg-[#F2F2F7] text-[#0F0F10] px-1.5 py-0.5 rounded-md font-semibold">×{reps}</span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500">
-                    {reps > 1
-                      ? `${reps}×${step.durationMin} min = ${effectiveDuration} min`
-                      : `${effectiveDuration} min`}
+                  <p className="text-[11px] text-[#8E8E93]">
+                    {reps > 1 ? `${reps}×${step.durationMin} min = ${effectiveDuration} min` : `${effectiveDuration} min`}
                   </p>
                 </div>
                 {step.targetPace && (
                   <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-semibold text-gray-800">
+                    <p className="text-[13px] font-bold text-[#0F0F10] tabular-nums">
                       {formatPace(step.targetPace.minSec)}–{formatPace(step.targetPace.maxSec)}
                     </p>
-                    <p className="text-xs text-gray-400">/km</p>
+                    <p className="text-[10px] text-[#8E8E93]">/km</p>
                   </div>
                 )}
               </div>
@@ -236,16 +225,14 @@ export default function SessionPage() {
 
         {/* Sync result */}
         {syncResult && (
-          <div
-            className={`rounded-xl p-3 mb-4 text-sm ${
-              syncResult.success
-                ? 'bg-green-50 border border-green-200 text-green-700'
-                : 'bg-red-50 border border-red-200 text-red-700'
-            }`}
-          >
+          <div className={`rounded-[20px] p-4 text-[13px] ${
+            syncResult.success
+              ? 'bg-[#C8E635]/15 border border-[#C8E635]/30 text-[#0F0F10]'
+              : 'bg-red-50 border border-red-100 text-red-700'
+          }`}>
             <p>{syncResult.success ? '✓ ' : '✗ '}{syncResult.message}</p>
             {!syncResult.success && syncResult.message.includes('Paramètres') && (
-              <Link href="/settings" className="inline-block mt-1 text-xs underline underline-offset-2">
+              <Link href="/settings" className="inline-block mt-1 text-[11px] text-[#8E8E93] underline underline-offset-2">
                 Aller aux Paramètres →
               </Link>
             )}
@@ -253,24 +240,20 @@ export default function SessionPage() {
         )}
 
         {/* Action buttons */}
-        <div className="flex gap-3">
+        <div className="flex gap-2 pt-1">
           <button
             onClick={handleGarminSync}
             disabled={syncing || !!session.garminSynced}
-            className="flex-1 py-3 px-4 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            className="flex-1 py-3.5 px-4 rounded-[16px] bg-white border border-black/8 text-[13px] font-semibold text-[#0F0F10] disabled:opacity-40 transition-all active:scale-[0.97]"
           >
-            {syncing
-              ? 'Synchronisation...'
-              : session.garminSynced
-              ? '✓ Synchro Garmin'
-              : 'Synchroniser Garmin'}
+            {syncing ? 'Sync...' : session.garminSynced ? '✓ Garmin' : 'Sync Garmin'}
           </button>
           <button
             onClick={handleComplete}
             disabled={session.completed}
-            className="flex-1 py-3 px-4 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 disabled:opacity-50 disabled:bg-green-600 transition-colors"
+            className="flex-1 py-3.5 px-4 rounded-[16px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:bg-[#C8E635] disabled:text-[#0F0F10] transition-all active:scale-[0.97]"
           >
-            {session.completed ? '✓ Séance complétée' : 'Valider la séance'}
+            {session.completed ? '✓ Complétée' : 'Valider la séance'}
           </button>
         </div>
       </main>
