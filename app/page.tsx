@@ -25,6 +25,27 @@ const RACE_LABELS: Record<string, string> = {
   '5k': '5 km',
 };
 
+function getPlanStartMonday(createdAt: string): Date {
+  const d = new Date(createdAt);
+  const dow = d.getDay(); // 0=dim, 1=lun, ...6=sam
+  const diff = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+}
+
+function getSessionDate(createdAt: string, week: number, day: number): Date {
+  const monday = getPlanStartMonday(createdAt);
+  const date = new Date(monday);
+  date.setDate(monday.getDate() + (week - 1) * 7 + (day - 1));
+  return date;
+}
+
+function formatDayMonth(date: Date): string {
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
 function getDaysRemaining(goalDate: string): number {
   const now = new Date();
   const goal = new Date(goalDate);
@@ -40,8 +61,9 @@ function formatGoalDate(goalDate: string): string {
   });
 }
 
-function SessionCard({ session }: { session: Session }) {
+function SessionCard({ session, date }: { session: Session; date: Date }) {
   const totalDuration = session.totalMin;
+  const isToday = new Date().toDateString() === date.toDateString();
 
   return (
     <Link href={`/session/${session.id}`}>
@@ -54,9 +76,17 @@ function SessionCard({ session }: { session: Session }) {
       >
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.12em] mb-1">
-              {DAY_LABELS[session.day]}
-            </p>
+            <div className="flex items-center gap-1.5 mb-1">
+              <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.12em]">
+                {DAY_LABELS[session.day]}
+              </p>
+              {isToday && (
+                <span className="text-[9px] font-bold bg-[#0F0F10] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                  Auj.
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] font-semibold text-[#8E8E93] mb-0.5">{formatDayMonth(date)}</p>
             <h3 className="text-sm font-semibold text-[#0F0F10] leading-tight truncate">
               {session.name}
             </h3>
@@ -120,13 +150,22 @@ function SessionCard({ session }: { session: Session }) {
   );
 }
 
-function RestCard({ day }: { day: number }) {
+function RestCard({ day, date }: { day: number; date: Date }) {
+  const isToday = new Date().toDateString() === date.toDateString();
   return (
     <div className="rounded-[20px] p-4 bg-white/50 border border-black/5">
-      <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.12em] mb-1">
-        {DAY_LABELS[day]}
-      </p>
-      <p className="text-sm text-[#8E8E93]">Repos</p>
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.12em]">
+          {DAY_LABELS[day]}
+        </p>
+        {isToday && (
+          <span className="text-[9px] font-bold bg-[#0F0F10] text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+            Auj.
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] font-semibold text-[#8E8E93] mb-1">{formatDayMonth(date)}</p>
+      <p className="text-[12px] text-[#8E8E93]">Repos</p>
     </div>
   );
 }
@@ -290,8 +329,9 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-2 px-3 pb-3">
             {[1, 2, 3, 4, 5, 6, 7].map((day) => {
               const session = sessionByDay[day];
-              if (session) return <SessionCard key={day} session={session} />;
-              return <RestCard key={day} day={day} />;
+              const date = getSessionDate(plan.createdAt, currentWeek, day);
+              if (session) return <SessionCard key={day} session={session} date={date} />;
+              return <RestCard key={day} day={day} date={date} />;
             })}
           </div>
         </div>
