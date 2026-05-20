@@ -18,7 +18,7 @@ export default function RouteMapClient({
     if (!containerRef.current || coords.length === 0) return;
     const el = containerRef.current;
 
-    const map = L.map(el, { zoomControl: true, attributionControl: false });
+    const map = L.map(el, { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
     }).addTo(map);

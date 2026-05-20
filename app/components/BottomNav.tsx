@@ -56,7 +56,7 @@ const NAV = [
   },
 ];
 
-const HIDDEN_ROUTES = ['/setup'];
+const HIDDEN_ROUTES = ['/setup', '/session/'];
 
 export default function BottomNav() {
   const pathname = usePathname();
