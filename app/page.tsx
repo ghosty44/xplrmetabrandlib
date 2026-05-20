@@ -157,6 +157,15 @@ export default function DashboardPage() {
               <p className="text-2xl font-bold text-gray-900">{daysRemaining}</p>
               <p className="text-xs text-gray-500">jours restants</p>
             </div>
+            {garminConnected && (
+              <Link
+                href="/garmin"
+                className="flex items-center justify-center w-9 h-9 rounded-lg border border-green-200 bg-green-50 hover:bg-green-100 transition-colors text-green-700 font-bold text-sm"
+                title="Données Garmin"
+              >
+                G
+              </Link>
+            )}
             <Link
               href="/settings"
               className="flex flex-col items-center justify-center w-9 h-9 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
