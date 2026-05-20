@@ -2,6 +2,7 @@
 
 import { useState, useEffect, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { generatePlan } from '@/lib/plan';
 import { savePlan, saveProfile, saveGarminTokens, saveUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
 import { UserProfile } from '@/lib/types';
@@ -30,10 +31,14 @@ function goalTimeToThresholdPace(goalTimeMin: number, raceKm: number): number {
 function SetupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [showWelcome, setShowWelcome] = useState(true);
   const [step, setStep] = useState<Step>(1);
 
   useEffect(() => {
-    if (searchParams.get('force') === '1') return;
+    if (searchParams.get('force') === '1') {
+      setShowWelcome(false);
+      return;
+    }
     const existing = loadPlan();
     if (existing) router.replace('/');
   }, [router, searchParams]);
@@ -119,6 +124,44 @@ function SetupPageContent() {
   };
 
   const estimatedThreshold = getEstimatedThreshold();
+
+  if (showWelcome) {
+    return (
+      <div className="min-h-screen bg-[#0F0F10] relative overflow-hidden flex flex-col">
+        {/* Hero image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/hero-running.jpg"
+            alt="Running"
+            fill
+            style={{ objectFit: 'cover', objectPosition: 'center 30%' }}
+            priority
+          />
+          {/* Gradient: transparent top → dark bottom */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-[#0F0F10]" />
+        </div>
+
+        {/* Content anchored at bottom */}
+        <div className="relative flex-1 flex flex-col justify-end px-6 pb-14 max-w-md mx-auto w-full">
+          <p className="text-[11px] font-semibold text-white/50 uppercase tracking-[0.2em] mb-3">
+            Campus Coach
+          </p>
+          <h1 className="text-[38px] font-black text-white leading-[1.1] mb-3">
+            Ton plan<br />running<br />sur mesure.
+          </h1>
+          <p className="text-[14px] text-white/60 mb-10 leading-relaxed">
+            Génère un programme personnalisé selon ton objectif et synchronise-le avec ta montre Garmin.
+          </p>
+          <button
+            onClick={() => setShowWelcome(false)}
+            className="w-full h-14 bg-white text-[#0F0F10] rounded-full text-[15px] font-bold tracking-tight transition-all active:scale-[0.97]"
+          >
+            Commencer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F2F2F7] flex flex-col">
