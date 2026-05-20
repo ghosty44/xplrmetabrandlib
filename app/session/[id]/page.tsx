@@ -1,11 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loadPlan, markSessionCompleted, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, loadUserId, GarminTokens } from '@/lib/store';
-import { Session } from '@/lib/types';
+import { loadPlan, savePlan, markSessionCompleted, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, loadUserId, GarminTokens } from '@/lib/store';
+import { Session, GpxPoint } from '@/lib/types';
 import { getZoneConfig, formatPace, getZoneHRRange } from '@/lib/zones';
+
+const RouteMap = dynamic(() => import('../RouteMapClient'), { ssr: false });
+const RouteEditor = dynamic(() => import('../RouteEditorClient'), { ssr: false });
 
 const ZONE_INTENSITY: Record<string, number> = {
   Recup: 0.2,
@@ -26,6 +30,7 @@ export default function SessionPage() {
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showRouteEditor, setShowRouteEditor] = useState(false);
 
   useEffect(() => {
     const p = loadPlan();
@@ -88,6 +93,24 @@ export default function SessionPage() {
     }
   };
 
+  const handleSaveRoute = (coords: GpxPoint[], distanceKm: number) => {
+    if (!session) return;
+    const p = loadPlan();
+    if (!p) return;
+    p.sessions = p.sessions.map((s) =>
+      s.id === session.id ? { ...s, gpxCoords: coords, gpxDistanceKm: distanceKm } : s
+    );
+    savePlan(p);
+    setSession((s) => s ? { ...s, gpxCoords: coords, gpxDistanceKm: distanceKm } : s);
+    setShowRouteEditor(false);
+    const userId = loadUserId();
+    fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, plan: p }),
+    }).catch(() => {});
+  };
+
   if (!loaded || !session) {
     return (
       <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center">
@@ -141,6 +164,38 @@ export default function SessionPage() {
           <div className="rounded-[20px] bg-white border border-black/5 px-5 py-4">
             <p className="text-[13px] text-[#8E8E93] leading-relaxed">{session.description}</p>
           </div>
+        )}
+
+        {/* Route map */}
+        {session.gpxCoords && session.gpxCoords.length > 0 ? (
+          <div>
+            <RouteMap coords={session.gpxCoords} distanceKm={session.gpxDistanceKm} />
+            <button
+              onClick={() => setShowRouteEditor(true)}
+              className="mt-2 w-full py-2 text-[12px] font-semibold text-[#8E8E93] text-center"
+            >
+              Modifier le tracé
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowRouteEditor(true)}
+            className="w-full py-3.5 rounded-[20px] border border-dashed border-[#8E8E93]/40 text-[13px] font-semibold text-[#8E8E93] flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M3 11l19-9-9 19-2-8-8-2z"/>
+            </svg>
+            Tracer un itinéraire
+          </button>
+        )}
+
+        {/* Route editor modal */}
+        {showRouteEditor && (
+          <RouteEditor
+            initial={session.gpxCoords}
+            onSave={handleSaveRoute}
+            onClose={() => setShowRouteEditor(false)}
+          />
         )}
 
         {/* Interval chart card */}

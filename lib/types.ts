@@ -14,6 +14,8 @@ export type Step = {
   isRecovery?: boolean;
 };
 
+export type GpxPoint = { lat: number; lng: number };
+
 export type Session = {
   id: string;
   name: string;
@@ -24,6 +26,8 @@ export type Session = {
   day: number; // 1=Lundi...7=Dimanche
   completed: boolean;
   garminSynced?: boolean;
+  gpxCoords?: GpxPoint[];
+  gpxDistanceKm?: number;
 };
 
 export type UserProfile = {
