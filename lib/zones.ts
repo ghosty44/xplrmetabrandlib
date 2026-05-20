@@ -43,6 +43,17 @@ export function formatPace(sec: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+export function getZoneHRRange(zone: Zone): { min: number; max: number } {
+  switch (zone) {
+    case 'Recup':     return { min: 60, max: 70 };
+    case 'EF':        return { min: 70, max: 80 };
+    case 'Neutre':    return { min: 78, max: 83 };
+    case 'SSeuilVO2': return { min: 83, max: 88 };
+    case 'Seuil':     return { min: 88, max: 92 };
+    case 'VO2max':    return { min: 92, max: 100 };
+  }
+}
+
 export function getZonePaceRange(
   zone: Zone,
   thresholdSec: number

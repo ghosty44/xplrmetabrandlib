@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { loadPlan, markSessionCompleted, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, loadUserId, GarminTokens } from '@/lib/store';
 import { Session } from '@/lib/types';
-import { getZoneConfig, formatPace } from '@/lib/zones';
+import { getZoneConfig, formatPace, getZoneHRRange } from '@/lib/zones';
 
 const ZONE_INTENSITY: Record<string, number> = {
   Recup: 0.2,
@@ -210,14 +210,26 @@ export default function SessionPage() {
                     {reps > 1 ? `${reps}×${step.durationMin} min = ${effectiveDuration} min` : `${effectiveDuration} min`}
                   </p>
                 </div>
-                {step.targetPace && (
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-[13px] font-bold text-[#0F0F10] tabular-nums">
-                      {formatPace(step.targetPace.minSec)}–{formatPace(step.targetPace.maxSec)}
-                    </p>
-                    <p className="text-[10px] text-[#8E8E93]">/km</p>
-                  </div>
-                )}
+                {(() => {
+                  const hrPct = getZoneHRRange(step.zone);
+                  const maxHR = plan?.profile.maxHR;
+                  const hrLabel = maxHR
+                    ? `${Math.round(maxHR * hrPct.min / 100)}–${Math.round(maxHR * hrPct.max / 100)} bpm`
+                    : `${hrPct.min}–${hrPct.max}% FCmax`;
+                  return (
+                    <div className="text-right flex-shrink-0">
+                      {step.targetPace && (
+                        <>
+                          <p className="text-[13px] font-bold text-[#0F0F10] tabular-nums">
+                            {formatPace(step.targetPace.minSec)}–{formatPace(step.targetPace.maxSec)}
+                          </p>
+                          <p className="text-[10px] text-[#8E8E93]">/km</p>
+                        </>
+                      )}
+                      <p className="text-[11px] font-semibold text-[#8E8E93] tabular-nums mt-0.5">{hrLabel}</p>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

@@ -32,6 +32,7 @@ export type UserProfile = {
   goalTimeMin: number; // en minutes
   weeklyKm: number;
   thresholdPaceSec: number; // secondes/km au seuil
+  maxHR?: number; // fréquence cardiaque maximale (bpm)
 };
 
 export type TrainingPlan = {

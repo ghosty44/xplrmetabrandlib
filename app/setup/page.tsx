@@ -45,6 +45,7 @@ function SetupPageContent() {
   const [thresholdInput, setThresholdInput] = useState('');
   const [useManualThreshold, setUseManualThreshold] = useState(false);
   const [weeklyKm, setWeeklyKm] = useState('40');
+  const [maxHR, setMaxHR] = useState('');
 
   const [garminEmail, setGarminEmail] = useState('');
   const [garminPassword, setGarminPassword] = useState('');
@@ -77,6 +78,7 @@ function SetupPageContent() {
         goalTimeMin,
         weeklyKm: parseFloat(weeklyKm) || 40,
         thresholdPaceSec: getEstimatedThreshold(),
+        ...(maxHR ? { maxHR: parseInt(maxHR) } : {}),
       };
       saveProfile(profile);
       const plan = generatePlan(profile);
@@ -283,6 +285,24 @@ function SetupPageContent() {
                       </button>
                     ))}
                   </div>
+                  <div className="mb-4">
+                    <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
+                      FC max <span className="normal-case font-normal">(optionnel)</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={maxHR}
+                        onChange={(e) => setMaxHR(e.target.value)}
+                        min="120" max="220"
+                        placeholder="ex : 185"
+                        className="w-full px-4 py-3 pr-14 bg-[#F2F2F7] rounded-[14px] text-[15px] font-bold text-[#0F0F10] placeholder:font-normal placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10 tabular-nums"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-[#8E8E93]">bpm</span>
+                    </div>
+                    <p className="text-[11px] text-[#8E8E93] mt-1.5">Permet d&apos;afficher des cibles BPM précises par séance</p>
+                  </div>
+
                   <div className="rounded-[14px] bg-[#F2F2F7] p-4">
                     <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-2">Récapitulatif</p>
                     <p className="text-[13px] text-[#0F0F10] font-medium">
