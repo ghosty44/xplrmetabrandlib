@@ -2,10 +2,11 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Link from 'next/link';
-import { saveGarminTokens, loadGarminTokens, clearGarminTokens, GarminTokens } from '@/lib/store';
+import { saveGarminTokens, loadGarminTokens, clearGarminTokens, garminTokensExpiresAt, GarminTokens } from '@/lib/store';
 
 export default function SettingsPage() {
   const [tokens, setTokens] = useState<GarminTokens | null>(null);
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,6 +15,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setTokens(loadGarminTokens());
+    setExpiresAt(garminTokensExpiresAt());
   }, []);
 
   const handleConnect = async (e: FormEvent) => {
@@ -33,6 +35,7 @@ export default function SettingsPage() {
       if (data.success && data.tokens) {
         saveGarminTokens(data.tokens);
         setTokens(data.tokens);
+        setExpiresAt(garminTokensExpiresAt());
         setSuccess(true);
         setEmail('');
         setPassword('');
@@ -49,6 +52,7 @@ export default function SettingsPage() {
   const handleDisconnect = () => {
     clearGarminTokens();
     setTokens(null);
+    setExpiresAt(null);
     setSuccess(false);
     setError(null);
   };
@@ -105,6 +109,12 @@ export default function SettingsPage() {
               <p className="text-sm text-gray-600">
                 Votre compte Garmin est connecté. Les prochaines synchronisations utiliseront votre session active.
               </p>
+              {expiresAt && (
+                <p className="text-xs text-gray-400">
+                  Connexion mémorisée jusqu&apos;au{' '}
+                  {expiresAt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+              )}
               <button
                 onClick={handleDisconnect}
                 className="w-full py-2.5 px-4 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors"

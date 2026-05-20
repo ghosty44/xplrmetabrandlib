@@ -3,6 +3,7 @@ import { TrainingPlan, UserProfile } from './types';
 const PLAN_KEY = 'campus_coach_plan';
 const PROFILE_KEY = 'campus_coach_profile';
 const GARMIN_KEY = 'campus_coach_garmin_tokens';
+const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 export type GarminTokens = {
   oauth1: { oauth_token: string; oauth_token_secret: string };
@@ -14,9 +15,12 @@ export type GarminTokens = {
   };
 };
 
+type StoredGarmin = { tokens: GarminTokens; savedAt: number };
+
 export function saveGarminTokens(tokens: GarminTokens): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(GARMIN_KEY, JSON.stringify(tokens));
+  const entry: StoredGarmin = { tokens, savedAt: Date.now() };
+  localStorage.setItem(GARMIN_KEY, JSON.stringify(entry));
 }
 
 export function loadGarminTokens(): GarminTokens | null {
@@ -24,7 +28,31 @@ export function loadGarminTokens(): GarminTokens | null {
   const raw = localStorage.getItem(GARMIN_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as GarminTokens;
+    const parsed = JSON.parse(raw) as StoredGarmin | GarminTokens;
+    // Handle old format (tokens stored directly without savedAt)
+    if (!('savedAt' in parsed)) {
+      clearGarminTokens();
+      return null;
+    }
+    const { tokens, savedAt } = parsed as StoredGarmin;
+    if (Date.now() - savedAt > GARMIN_TTL_MS) {
+      clearGarminTokens();
+      return null;
+    }
+    return tokens;
+  } catch {
+    return null;
+  }
+}
+
+export function garminTokensExpiresAt(): Date | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(GARMIN_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredGarmin;
+    if (!parsed.savedAt) return null;
+    return new Date(parsed.savedAt + GARMIN_TTL_MS);
   } catch {
     return null;
   }
