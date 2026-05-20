@@ -1,54 +1,60 @@
 'use client';
 
-import { useState, useEffect, FormEvent, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { generatePlan } from '@/lib/plan';
 import { savePlan, saveProfile, saveGarminTokens, loadGarminTokens, saveUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
 import { UserProfile } from '@/lib/types';
-import { formatPace } from '@/lib/zones';
 
-type Step = 1 | 2 | 3 | 4;
+type Phase = 'chat' | 'garmin';
+type ChatMessage = { role: 'user' | 'model'; content: string };
 
-const RACE_OPTIONS = [
-  { value: 'marathon', label: 'Marathon', km: 42.195 },
-  { value: 'halfMarathon', label: 'Semi-Marathon', km: 21.1 },
-  { value: '10k', label: '10 km', km: 10 },
-  { value: '5k', label: '5 km', km: 5 },
-] as const;
-
-const STEP_LABELS = ['Objectif', 'Temps', 'Volume', 'Garmin'];
-
-function timeToMinutes(h: string, m: string): number {
-  return parseInt(h || '0') * 60 + parseInt(m || '0');
-}
-
-function goalTimeToThresholdPace(goalTimeMin: number, raceKm: number): number {
-  const avgPaceSec = (goalTimeMin * 60) / raceKm;
-  return Math.round(avgPaceSec * 0.92);
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1 px-4 py-3">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="w-2 h-2 rounded-full bg-[#8E8E93] animate-bounce"
+          style={{ animationDelay: `${i * 0.15}s` }}
+        />
+      ))}
+    </div>
+  );
 }
 
 function SetupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Lit localStorage de façon synchrone — pas de flash si plan existe déjà
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     if (new URLSearchParams(window.location.search).get('force') === '1') return false;
     return !loadPlan();
   });
-  // 'hero' = landing screen, 'garmin' = garmin auth form on welcome
   const [welcomePhase, setWelcomePhase] = useState<'hero' | 'garmin'>('hero');
   const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
-  const [step, setStep] = useState<Step>(1);
+
+  // Chat state
+  const [phase, setPhase] = useState<Phase>('chat');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [thinking, setThinking] = useState(false);
+  const [planReady, setPlanReady] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Garmin state
+  const [garminEmail, setGarminEmail] = useState('');
+  const [garminPassword, setGarminPassword] = useState('');
+  const [garminLoading, setGarminLoading] = useState(false);
+  const [garminError, setGarminError] = useState<string | null>(null);
+  const [garminConnected, setGarminConnected] = useState(false);
 
   useEffect(() => {
-    // Redirect si plan déjà là et pas en force
     if (searchParams.get('force') !== '1' && loadPlan()) {
       router.replace('/');
       return;
     }
-    // Load hero image from gallery
     const userId = loadUserId();
     if (userId) {
       fetch(`/api/gallery?userId=${encodeURIComponent(userId)}`)
@@ -61,62 +67,76 @@ function SetupPageContent() {
     }
   }, [router, searchParams]);
 
-  const [goalRace, setGoalRace] = useState<UserProfile['goalRace']>('marathon');
-  const [goalDate, setGoalDate] = useState('');
-  const [goalHours, setGoalHours] = useState('3');
-  const [goalMinutes, setGoalMinutes] = useState('30');
-  const [thresholdInput, setThresholdInput] = useState('');
-  const [useManualThreshold, setUseManualThreshold] = useState(false);
-  const [weeklyKm, setWeeklyKm] = useState('40');
-  const [maxHR, setMaxHR] = useState('');
-
-  const [garminEmail, setGarminEmail] = useState('');
-  const [garminPassword, setGarminPassword] = useState('');
-  const [garminLoading, setGarminLoading] = useState(false);
-  const [garminError, setGarminError] = useState<string | null>(null);
-  const [garminConnected, setGarminConnected] = useState(false);
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const selectedRace = RACE_OPTIONS.find((r) => r.value === goalRace)!;
-
-  const getEstimatedThreshold = (): number => {
-    if (useManualThreshold && thresholdInput) {
-      const parts = thresholdInput.split(':');
-      if (parts.length === 2) return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  // Boot the chat with the first AI message once welcome is dismissed
+  useEffect(() => {
+    if (!showWelcome && messages.length === 0) {
+      kickstart();
     }
-    const goalTimeMin = timeToMinutes(goalHours, goalMinutes);
-    return goalTimeToThresholdPace(goalTimeMin, selectedRace.km);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showWelcome]);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (step < 3) { setStep((s) => (s + 1) as Step); return; }
-    if (step === 3) {
-      setIsSubmitting(true);
-      const goalTimeMin = timeToMinutes(goalHours, goalMinutes);
-      const profile: UserProfile = {
-        goalRace,
-        goalDate,
-        goalTimeMin,
-        weeklyKm: parseFloat(weeklyKm) || 40,
-        thresholdPaceSec: getEstimatedThreshold(),
-        ...(maxHR ? { maxHR: parseInt(maxHR) } : {}),
-      };
-      saveProfile(profile);
-      const plan = generatePlan(profile);
-      savePlan(plan);
-      const userId = loadUserId(); // retourne toujours au moins "solo"
-      saveUserId(userId);
-      fetch('/api/profile', {
+  // Scroll to bottom on new message
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, thinking]);
+
+  async function kickstart() {
+    setThinking(true);
+    try {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, plan }),
-      }).catch((err) => console.error('[DB] Plan save failed:', err));
-      setIsSubmitting(false);
-      setStep(4);
+        body: JSON.stringify({ messages: [{ role: 'user', content: 'Bonjour' }] }),
+      });
+      const data = await res.json() as { message: string; profile?: UserProfile };
+      setMessages([{ role: 'model', content: data.message }]);
+    } catch {
+      setMessages([{ role: 'model', content: 'Bonjour ! Je suis Campus Coach. Quelle course prépares-tu ?' }]);
+    } finally {
+      setThinking(false);
     }
-  };
+  }
+
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text || thinking) return;
+    setInput('');
+
+    const next: ChatMessage[] = [...messages, { role: 'user', content: text }];
+    setMessages(next);
+    setThinking(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: next }),
+      });
+      const data = await res.json() as { message: string; profile?: UserProfile | null; error?: string };
+
+      const reply = data.message || 'Désolé, une erreur est survenue.';
+      setMessages((prev) => [...prev, { role: 'model', content: reply }]);
+
+      if (data.profile) {
+        saveProfile(data.profile);
+        const plan = generatePlan(data.profile);
+        savePlan(plan);
+        const userId = loadUserId();
+        saveUserId(userId);
+        fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, plan }),
+        }).catch(() => {});
+        setPlanReady(true);
+        setTimeout(() => setPhase('garmin'), 1800);
+      }
+    } catch {
+      setMessages((prev) => [...prev, { role: 'model', content: 'Erreur réseau. Réessaie !' }]);
+    } finally {
+      setThinking(false);
+    }
+  }
 
   const handleGarminConnect = async () => {
     setGarminLoading(true);
@@ -141,15 +161,13 @@ function SetupPageContent() {
     }
   };
 
-  const estimatedThreshold = getEstimatedThreshold();
-
+  // ── Welcome screen ──────────────────────────────────────────────────────────
   if (showWelcome) {
     const heroSrc = heroDataUrl ?? '/hero-running.jpg';
     const alreadyConnected = typeof window !== 'undefined' && !!loadGarminTokens();
 
     return (
       <div className="min-h-screen bg-[#0F0F10] relative overflow-hidden flex flex-col">
-        {/* Hero image */}
         <div className="absolute inset-0">
           {heroDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -161,7 +179,6 @@ function SetupPageContent() {
         </div>
 
         {welcomePhase === 'hero' ? (
-          /* Landing screen */
           <div className="relative flex-1 flex flex-col justify-end px-6 pb-14 max-w-md mx-auto w-full">
             <p className="text-[11px] font-semibold text-white/50 uppercase tracking-[0.2em] mb-3">Campus Coach</p>
             <h1 className="text-[38px] font-black text-white leading-[1.1] mb-3">
@@ -205,7 +222,6 @@ function SetupPageContent() {
             )}
           </div>
         ) : (
-          /* Garmin auth form on welcome */
           <div className="relative flex-1 flex flex-col justify-end max-w-md mx-auto w-full">
             <div className="bg-[#0F0F10]/95 backdrop-blur-xl rounded-t-[32px] px-6 pt-8 pb-14">
               <div className="w-12 h-1.5 rounded-full bg-white/20 mx-auto mb-6" />
@@ -216,13 +232,11 @@ function SetupPageContent() {
                   <p className="text-[12px] text-white/50">Tes séances seront dans ton calendrier</p>
                 </div>
               </div>
-
               {garminError && (
                 <div className="rounded-[14px] bg-red-500/20 border border-red-500/30 p-3 mb-4">
                   <p className="text-[12px] text-red-300">{garminError}</p>
                 </div>
               )}
-
               {garminConnected ? (
                 <div className="text-center py-4 mb-6">
                   <div className="w-14 h-14 rounded-full bg-[#C8E635]/20 flex items-center justify-center mx-auto mb-3">
@@ -237,37 +251,18 @@ function SetupPageContent() {
                 <div className="space-y-3 mb-4">
                   <div>
                     <label className="block text-[11px] font-semibold text-white/40 uppercase tracking-[0.08em] mb-1.5">Email Garmin Connect</label>
-                    <input
-                      type="email"
-                      value={garminEmail}
-                      onChange={(e) => setGarminEmail(e.target.value)}
-                      placeholder="ton@email.com"
-                      className="w-full px-4 py-3 bg-white/10 rounded-[14px] text-[13px] text-white placeholder:text-white/30 border-0 outline-none focus:ring-2 focus:ring-white/20"
-                    />
+                    <input type="email" value={garminEmail} onChange={(e) => setGarminEmail(e.target.value)} placeholder="ton@email.com" className="w-full px-4 py-3 bg-white/10 rounded-[14px] text-[13px] text-white placeholder:text-white/30 border-0 outline-none focus:ring-2 focus:ring-white/20" />
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-white/40 uppercase tracking-[0.08em] mb-1.5">Mot de passe</label>
-                    <input
-                      type="password"
-                      value={garminPassword}
-                      onChange={(e) => setGarminPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full px-4 py-3 bg-white/10 rounded-[14px] text-[13px] text-white placeholder:text-white/30 border-0 outline-none focus:ring-2 focus:ring-white/20"
-                    />
+                    <input type="password" value={garminPassword} onChange={(e) => setGarminPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-white/10 rounded-[14px] text-[13px] text-white placeholder:text-white/30 border-0 outline-none focus:ring-2 focus:ring-white/20" />
                   </div>
                   <p className="text-[11px] text-white/30">Ton mot de passe n&apos;est jamais stocké — seuls les tokens OAuth, valables 30 jours.</p>
                 </div>
               )}
-
               <div className="flex gap-2">
                 {!garminConnected && (
-                  <button
-                    type="button"
-                    onClick={() => setShowWelcome(false)}
-                    className="flex-1 h-12 rounded-[14px] bg-white/10 text-white/60 text-[13px] font-semibold transition-all active:scale-[0.98]"
-                  >
-                    Passer
-                  </button>
+                  <button type="button" onClick={() => setShowWelcome(false)} className="flex-1 h-12 rounded-[14px] bg-white/10 text-white/60 text-[13px] font-semibold transition-all active:scale-[0.98]">Passer</button>
                 )}
                 <button
                   type="button"
@@ -285,312 +280,157 @@ function SetupPageContent() {
     );
   }
 
+  // ── Garmin step ─────────────────────────────────────────────────────────────
+  if (phase === 'garmin') {
+    return (
+      <div className="min-h-screen bg-[#F2F2F7] flex flex-col">
+        <div className="flex-1 max-w-md mx-auto w-full px-4 pt-20 pb-10 space-y-3">
+          {/* Plan ready banner */}
+          <div className="rounded-[20px] bg-[#C8E635]/15 border border-[#C8E635]/30 p-5 text-center mb-2">
+            <div className="w-12 h-12 rounded-full bg-[#C8E635]/20 flex items-center justify-center mx-auto mb-3">
+              <svg width="22" height="17" viewBox="0 0 22 17" fill="none">
+                <path d="M1.5 8.5l5.5 5.5L20.5 1.5" stroke="#0F0F10" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <p className="text-[16px] font-black text-[#0F0F10]">Ton plan est prêt !</p>
+            <p className="text-[12px] text-[#8E8E93] mt-1">Programme généré et sauvegardé.</p>
+          </div>
+
+          <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+            {garminConnected ? (
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 rounded-full bg-[#C8E635]/20 flex items-center justify-center mx-auto mb-4">
+                  <svg width="28" height="22" viewBox="0 0 28 22" fill="none">
+                    <path d="M2 11l7 7L26 2" stroke="#0F0F10" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <h2 className="text-[18px] font-black text-[#0F0F10] mb-1">Garmin connecté !</h2>
+                <p className="text-[13px] text-[#8E8E93]">Tes séances seront synchronisées avec Garmin Connect.</p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-[#F2F2F7]">
+                  <div className="w-10 h-10 rounded-[14px] bg-[#C8E635]/20 flex items-center justify-center text-[#0F0F10] font-black text-lg">G</div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-0.5">Optionnel</p>
+                    <h2 className="text-[16px] font-black text-[#0F0F10]">Connecte Garmin</h2>
+                  </div>
+                </div>
+                <div className="px-5 py-4 space-y-3">
+                  {garminError && (
+                    <div className="rounded-[14px] bg-red-50 border border-red-100 p-3">
+                      <p className="text-[12px] text-red-600">{garminError}</p>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Email Garmin Connect</label>
+                    <input type="email" value={garminEmail} onChange={(e) => setGarminEmail(e.target.value)} placeholder="ton@email.com" className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Mot de passe</label>
+                    <input type="password" value={garminPassword} onChange={(e) => setGarminPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10" />
+                  </div>
+                  <p className="text-[11px] text-[#8E8E93]">Ton mot de passe n&apos;est jamais stocké — seuls les tokens OAuth.</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            {!garminConnected && (
+              <button onClick={() => router.push('/')} className="flex-1 h-12 rounded-[14px] bg-white border border-black/8 text-[13px] font-semibold text-[#8E8E93]">
+                Passer
+              </button>
+            )}
+            <button
+              onClick={garminConnected ? () => router.push('/') : handleGarminConnect}
+              disabled={garminLoading || (!garminConnected && (!garminEmail || !garminPassword))}
+              className="flex-1 h-12 rounded-[14px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:opacity-40 transition-all active:scale-[0.98]"
+            >
+              {garminConnected ? 'C\'est parti !' : garminLoading ? 'Connexion...' : 'Se connecter'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Chat phase ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F2F2F7] flex flex-col">
-      {/* Top bar */}
-      <div className="max-w-md mx-auto w-full px-4 pt-16 pb-6">
-        <h1 className="text-[28px] font-black text-[#0F0F10] tracking-tight mb-1">Campus Coach</h1>
-        <p className="text-[13px] text-[#8E8E93]">Crée ton plan d&apos;entraînement personnalisé</p>
-
-        {/* Step pills */}
-        <div className="flex gap-2 mt-6">
-          {([1, 2, 3, 4] as Step[]).map((s) => (
-            <div key={s} className="flex items-center gap-2 flex-1">
-              <div className="flex-1">
-                <div className={`h-1 rounded-full transition-all ${
-                  step > s ? 'bg-[#C8E635]' : step === s ? 'bg-[#0F0F10]' : 'bg-[#E5E5EA]'
-                }`} />
-                <p className={`text-[10px] font-semibold mt-1.5 transition-colors ${
-                  step === s ? 'text-[#0F0F10]' : 'text-[#8E8E93]'
-                }`}>{STEP_LABELS[s - 1]}</p>
-              </div>
-            </div>
-          ))}
+      {/* Header */}
+      <div className="max-w-md mx-auto w-full px-4 pt-14 pb-3 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-[12px] bg-[#0F0F10] flex items-center justify-center flex-shrink-0">
+            <span className="text-[#C8E635] font-black text-[14px]">CC</span>
+          </div>
+          <div>
+            <p className="text-[15px] font-black text-[#0F0F10]">Campus Coach</p>
+            <p className="text-[11px] text-[#8E8E93]">Création de ton plan</p>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 max-w-md mx-auto w-full px-4 pb-10">
-        {step < 4 ? (
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="rounded-[24px] bg-white border border-black/5 p-6">
-              {/* Step 1 */}
-              {step === 1 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-1">Étape 1</p>
-                  <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Ton objectif</h2>
-                  <p className="text-[13px] text-[#8E8E93] mb-5">Quelle course vises-tu ?</p>
-                  <div className="grid grid-cols-2 gap-2 mb-5">
-                    {RACE_OPTIONS.map((race) => (
-                      <button
-                        key={race.value}
-                        type="button"
-                        onClick={() => setGoalRace(race.value)}
-                        className={`p-4 rounded-[16px] text-left transition-all active:scale-[0.97] ${
-                          goalRace === race.value
-                            ? 'bg-[#0F0F10] text-white'
-                            : 'bg-[#F2F2F7] text-[#0F0F10]'
-                        }`}
-                      >
-                        <p className={`text-[15px] font-bold mb-0.5 ${goalRace === race.value ? 'text-white' : 'text-[#0F0F10]'}`}>
-                          {race.label}
-                        </p>
-                        <p className={`text-[11px] ${goalRace === race.value ? 'text-white/60' : 'text-[#8E8E93]'}`}>
-                          {race.km} km
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                      Date de la course
-                    </label>
-                    <input
-                      type="date"
-                      value={goalDate}
-                      onChange={(e) => setGoalDate(e.target.value)}
-                      required
-                      min={new Date().toISOString().split('T')[0]}
-                      className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Step 2 */}
-              {step === 2 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-1">Étape 2</p>
-                  <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Temps visé</h2>
-                  <p className="text-[13px] text-[#8E8E93] mb-5">Quel temps vises-tu sur {selectedRace.label} ?</p>
-                  <div className="flex gap-3 mb-4">
-                    <div className="flex-1">
-                      <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Heures</label>
-                      <input
-                        type="number"
-                        value={goalHours}
-                        onChange={(e) => setGoalHours(e.target.value)}
-                        min="0" max="10"
-                        className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[15px] font-bold text-[#0F0F10] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10 tabular-nums"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Minutes</label>
-                      <input
-                        type="number"
-                        value={goalMinutes}
-                        onChange={(e) => setGoalMinutes(e.target.value)}
-                        min="0" max="59"
-                        className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[15px] font-bold text-[#0F0F10] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10 tabular-nums"
-                      />
-                    </div>
-                  </div>
-                  <div className="bg-[#C8E635]/15 rounded-[14px] p-4 mb-4">
-                    <p className="text-[11px] text-[#8E8E93] uppercase tracking-[0.08em] font-semibold mb-1">Allure seuil estimée</p>
-                    <p className="text-[22px] font-black text-[#0F0F10] tabular-nums">{formatPace(estimatedThreshold)}<span className="text-[13px] font-medium text-[#8E8E93] ml-1">/km</span></p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setUseManualThreshold(!useManualThreshold)}
-                    className="text-[12px] text-[#8E8E93] underline underline-offset-2 mb-3 block"
-                  >
-                    {useManualThreshold ? 'Utiliser le calcul automatique' : 'Saisir mon allure seuil manuellement'}
-                  </button>
-                  {useManualThreshold && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                        Allure seuil (mm:ss /km)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="ex: 4:30"
-                        value={thresholdInput}
-                        onChange={(e) => setThresholdInput(e.target.value)}
-                        pattern="[0-9]+:[0-5][0-9]"
-                        className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Step 3 */}
-              {step === 3 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-1">Étape 3</p>
-                  <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Volume actuel</h2>
-                  <p className="text-[13px] text-[#8E8E93] mb-5">Combien de km cours-tu par semaine ?</p>
-                  <div className="mb-4">
-                    <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                      Km par semaine
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={weeklyKm}
-                        onChange={(e) => setWeeklyKm(e.target.value)}
-                        min="5" max="200" required
-                        className="w-full px-4 py-3 pr-12 bg-[#F2F2F7] rounded-[14px] text-[15px] font-bold text-[#0F0F10] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10 tabular-nums"
-                      />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-[#8E8E93]">km</span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-2 mb-5">
-                    {[20, 40, 60, 80].map((km) => (
-                      <button
-                        key={km}
-                        type="button"
-                        onClick={() => setWeeklyKm(String(km))}
-                        className={`py-2.5 rounded-[12px] text-[13px] font-semibold transition-all active:scale-[0.95] ${
-                          weeklyKm === String(km)
-                            ? 'bg-[#0F0F10] text-white'
-                            : 'bg-[#F2F2F7] text-[#0F0F10]'
-                        }`}
-                      >
-                        {km}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mb-4">
-                    <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                      FC max <span className="normal-case font-normal">(optionnel)</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        value={maxHR}
-                        onChange={(e) => setMaxHR(e.target.value)}
-                        min="120" max="220"
-                        placeholder="ex : 185"
-                        className="w-full px-4 py-3 pr-14 bg-[#F2F2F7] rounded-[14px] text-[15px] font-bold text-[#0F0F10] placeholder:font-normal placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10 tabular-nums"
-                      />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-[#8E8E93]">bpm</span>
-                    </div>
-                    <p className="text-[11px] text-[#8E8E93] mt-1.5">Permet d&apos;afficher des cibles BPM précises par séance</p>
-                  </div>
-
-                  <div className="rounded-[14px] bg-[#F2F2F7] p-4">
-                    <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-2">Récapitulatif</p>
-                    <p className="text-[13px] text-[#0F0F10] font-medium">
-                      {RACE_OPTIONS.find((r) => r.value === goalRace)?.label}
-                    </p>
-                    <p className="text-[11px] text-[#8E8E93] mt-0.5">
-                      {new Date(goalDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </p>
-                    <p className="text-[11px] text-[#8E8E93]">
-                      Allure seuil {formatPace(estimatedThreshold)}/km · {weeklyKm} km/sem
-                    </p>
-                  </div>
-                </div>
-              )}
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 py-2 space-y-3">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[82%] px-4 py-3 rounded-[18px] text-[14px] leading-relaxed ${
+                msg.role === 'user'
+                  ? 'bg-[#0F0F10] text-white rounded-br-[6px]'
+                  : 'bg-white border border-black/5 text-[#0F0F10] rounded-bl-[6px]'
+              }`}
+            >
+              {msg.content}
             </div>
+          </div>
+        ))}
 
-            {/* Navigation */}
-            <div className="flex gap-2">
-              {step > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setStep((s) => (s - 1) as Step)}
-                  className="w-12 h-12 rounded-[14px] bg-white border border-black/8 flex items-center justify-center flex-shrink-0"
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M9 2L4 7l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={isSubmitting || (step === 1 && !goalDate)}
-                className="flex-1 h-12 rounded-[14px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:opacity-40 transition-all active:scale-[0.98]"
-              >
-                {isSubmitting ? 'Génération...' : 'Continuer'}
-              </button>
-            </div>
-          </form>
-        ) : (
-          /* Step 4 — Garmin */
-          <div className="space-y-3">
-            <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
-              {garminConnected ? (
-                <div className="p-6 text-center">
-                  <div className="w-16 h-16 rounded-full bg-[#C8E635]/20 flex items-center justify-center mx-auto mb-4">
-                    <svg width="28" height="22" viewBox="0 0 28 22" fill="none">
-                      <path d="M2 11l7 7L26 2" stroke="#0F0F10" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  <h2 className="text-[18px] font-black text-[#0F0F10] mb-1">Garmin connecté !</h2>
-                  <p className="text-[13px] text-[#8E8E93]">
-                    Tes séances seront synchronisées avec Garmin Connect.
-                    La connexion est mémorisée 30 jours.
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex items-center gap-3 px-5 pt-5 pb-4 border-b border-[#F2F2F7]">
-                    <div className="w-10 h-10 rounded-[14px] bg-[#C8E635]/20 flex items-center justify-center text-[#0F0F10] font-black text-lg">G</div>
-                    <div>
-                      <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-0.5">Étape 4</p>
-                      <h2 className="text-[16px] font-black text-[#0F0F10]">Connecte Garmin</h2>
-                    </div>
-                  </div>
-                  <div className="px-5 py-4 space-y-3">
-                    {garminError && (
-                      <div className="rounded-[14px] bg-red-50 border border-red-100 p-3">
-                        <p className="text-[12px] text-red-600">{garminError}</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                        Email Garmin Connect
-                      </label>
-                      <input
-                        type="email"
-                        value={garminEmail}
-                        onChange={(e) => setGarminEmail(e.target.value)}
-                        placeholder="ton@email.com"
-                        className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                        Mot de passe
-                      </label>
-                      <input
-                        type="password"
-                        value={garminPassword}
-                        onChange={(e) => setGarminPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10"
-                      />
-                    </div>
-                    <p className="text-[11px] text-[#8E8E93]">
-                      Ton mot de passe n&apos;est jamais stocké — seuls les tokens OAuth, valables 30 jours.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              {!garminConnected && (
-                <button
-                  type="button"
-                  onClick={() => router.push('/')}
-                  className="flex-1 h-12 rounded-[14px] bg-white border border-black/8 text-[13px] font-semibold text-[#8E8E93] transition-all active:scale-[0.98]"
-                >
-                  Passer
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={garminConnected ? () => router.push('/') : handleGarminConnect}
-                disabled={garminLoading || (!garminConnected && (!garminEmail || !garminPassword))}
-                className="flex-1 h-12 rounded-[14px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:opacity-40 transition-all active:scale-[0.98]"
-              >
-                {garminConnected ? 'Commencer' : garminLoading ? 'Connexion...' : 'Se connecter'}
-              </button>
+        {thinking && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-black/5 rounded-[18px] rounded-bl-[6px]">
+              <TypingDots />
             </div>
           </div>
         )}
+
+        {planReady && (
+          <div className="flex justify-center py-2">
+            <div className="flex items-center gap-2 bg-[#C8E635]/20 text-[#0F0F10] px-4 py-2 rounded-full text-[12px] font-semibold">
+              <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
+                <path d="M1 5.5l3.5 3.5L13 1" stroke="#0F0F10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Plan généré !
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="max-w-md mx-auto w-full px-4 pb-8 pt-2 flex-shrink-0">
+        <div className="flex gap-2 bg-white border border-black/8 rounded-[20px] px-4 py-2 items-end">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+            placeholder={planReady ? 'Plan généré !' : 'Réponds ici…'}
+            disabled={thinking || planReady}
+            className="flex-1 text-[14px] text-[#0F0F10] placeholder:text-[#8E8E93] bg-transparent outline-none py-1 resize-none disabled:opacity-50"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim() || thinking || planReady}
+            className="w-8 h-8 rounded-full bg-[#0F0F10] flex items-center justify-center flex-shrink-0 disabled:opacity-30 transition-all active:scale-[0.9] mb-0.5"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );
