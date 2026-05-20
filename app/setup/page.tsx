@@ -4,7 +4,7 @@ import { useState, useEffect, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { generatePlan } from '@/lib/plan';
-import { savePlan, saveProfile, saveGarminTokens, saveUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
+import { savePlan, saveProfile, saveGarminTokens, loadGarminTokens, saveUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
 import { UserProfile } from '@/lib/types';
 import { formatPace } from '@/lib/zones';
 
@@ -37,6 +37,8 @@ function SetupPageContent() {
     if (new URLSearchParams(window.location.search).get('force') === '1') return false;
     return !loadPlan();
   });
+  // 'hero' = landing screen, 'garmin' = garmin auth form on welcome
+  const [welcomePhase, setWelcomePhase] = useState<'hero' | 'garmin'>('hero');
   const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
   const [step, setStep] = useState<Step>(1);
 
@@ -143,6 +145,8 @@ function SetupPageContent() {
 
   if (showWelcome) {
     const heroSrc = heroDataUrl ?? '/hero-running.jpg';
+    const alreadyConnected = typeof window !== 'undefined' && !!loadGarminTokens();
+
     return (
       <div className="min-h-screen bg-[#0F0F10] relative overflow-hidden flex flex-col">
         {/* Hero image */}
@@ -153,28 +157,130 @@ function SetupPageContent() {
           ) : (
             <Image src={heroSrc} alt="Running" fill style={{ objectFit: 'cover', objectPosition: 'center 30%' }} priority />
           )}
-          {/* Gradient: transparent top → dark bottom */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-[#0F0F10]" />
         </div>
 
-        {/* Content anchored at bottom */}
-        <div className="relative flex-1 flex flex-col justify-end px-6 pb-14 max-w-md mx-auto w-full">
-          <p className="text-[11px] font-semibold text-white/50 uppercase tracking-[0.2em] mb-3">
-            Campus Coach
-          </p>
-          <h1 className="text-[38px] font-black text-white leading-[1.1] mb-3">
-            Ton plan<br />running<br />sur mesure.
-          </h1>
-          <p className="text-[14px] text-white/60 mb-10 leading-relaxed">
-            Génère un programme personnalisé selon ton objectif et synchronise-le avec ta montre Garmin.
-          </p>
-          <button
-            onClick={() => setShowWelcome(false)}
-            className="w-full h-14 bg-white text-[#0F0F10] rounded-full text-[15px] font-bold tracking-tight transition-all active:scale-[0.97]"
-          >
-            Commencer
-          </button>
-        </div>
+        {welcomePhase === 'hero' ? (
+          /* Landing screen */
+          <div className="relative flex-1 flex flex-col justify-end px-6 pb-14 max-w-md mx-auto w-full">
+            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-[0.2em] mb-3">Campus Coach</p>
+            <h1 className="text-[38px] font-black text-white leading-[1.1] mb-3">
+              Ton plan<br />running<br />sur mesure.
+            </h1>
+            <p className="text-[14px] text-white/60 mb-10 leading-relaxed">
+              Génère un programme personnalisé selon ton objectif et synchronise-le avec ta montre Garmin.
+            </p>
+            {alreadyConnected ? (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-5 h-5 rounded-full bg-[#C8E635] flex items-center justify-center flex-shrink-0">
+                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                      <path d="M1 4l2.5 2.5L9 1" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <p className="text-[13px] font-semibold text-white/80">Garmin déjà connecté</p>
+                </div>
+                <button
+                  onClick={() => setShowWelcome(false)}
+                  className="w-full h-14 bg-white text-[#0F0F10] rounded-full text-[15px] font-bold tracking-tight transition-all active:scale-[0.97]"
+                >
+                  Commencer
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setWelcomePhase('garmin')}
+                  className="w-full h-14 bg-white text-[#0F0F10] rounded-full text-[15px] font-bold tracking-tight transition-all active:scale-[0.97] mb-3"
+                >
+                  Se connecter à Garmin
+                </button>
+                <button
+                  onClick={() => setShowWelcome(false)}
+                  className="w-full h-12 text-white/50 text-[13px] font-medium"
+                >
+                  Commencer sans Garmin
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          /* Garmin auth form on welcome */
+          <div className="relative flex-1 flex flex-col justify-end max-w-md mx-auto w-full">
+            <div className="bg-[#0F0F10]/95 backdrop-blur-xl rounded-t-[32px] px-6 pt-8 pb-14">
+              <div className="w-12 h-1.5 rounded-full bg-white/20 mx-auto mb-6" />
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-[14px] bg-[#C8E635]/20 flex items-center justify-center text-white font-black text-lg">G</div>
+                <div>
+                  <p className="text-[15px] font-black text-white">Connecte Garmin</p>
+                  <p className="text-[12px] text-white/50">Tes séances seront dans ton calendrier</p>
+                </div>
+              </div>
+
+              {garminError && (
+                <div className="rounded-[14px] bg-red-500/20 border border-red-500/30 p-3 mb-4">
+                  <p className="text-[12px] text-red-300">{garminError}</p>
+                </div>
+              )}
+
+              {garminConnected ? (
+                <div className="text-center py-4 mb-6">
+                  <div className="w-14 h-14 rounded-full bg-[#C8E635]/20 flex items-center justify-center mx-auto mb-3">
+                    <svg width="24" height="19" viewBox="0 0 24 19" fill="none">
+                      <path d="M1.5 9.5l6 6L22.5 1.5" stroke="#C8E635" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <p className="text-[15px] font-black text-white mb-1">Garmin connecté !</p>
+                  <p className="text-[12px] text-white/50">Tes séances se synchroniseront automatiquement</p>
+                </div>
+              ) : (
+                <div className="space-y-3 mb-4">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-white/40 uppercase tracking-[0.08em] mb-1.5">Email Garmin Connect</label>
+                    <input
+                      type="email"
+                      value={garminEmail}
+                      onChange={(e) => setGarminEmail(e.target.value)}
+                      placeholder="ton@email.com"
+                      className="w-full px-4 py-3 bg-white/10 rounded-[14px] text-[13px] text-white placeholder:text-white/30 border-0 outline-none focus:ring-2 focus:ring-white/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-white/40 uppercase tracking-[0.08em] mb-1.5">Mot de passe</label>
+                    <input
+                      type="password"
+                      value={garminPassword}
+                      onChange={(e) => setGarminPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-3 bg-white/10 rounded-[14px] text-[13px] text-white placeholder:text-white/30 border-0 outline-none focus:ring-2 focus:ring-white/20"
+                    />
+                  </div>
+                  <p className="text-[11px] text-white/30">Ton mot de passe n&apos;est jamais stocké — seuls les tokens OAuth, valables 30 jours.</p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                {!garminConnected && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWelcome(false)}
+                    className="flex-1 h-12 rounded-[14px] bg-white/10 text-white/60 text-[13px] font-semibold transition-all active:scale-[0.98]"
+                  >
+                    Passer
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={garminConnected ? () => setShowWelcome(false) : handleGarminConnect}
+                  disabled={garminLoading || (!garminConnected && (!garminEmail || !garminPassword))}
+                  className="flex-1 h-12 rounded-[14px] bg-white text-[#0F0F10] text-[13px] font-bold disabled:opacity-40 transition-all active:scale-[0.98]"
+                >
+                  {garminConnected ? 'Commencer' : garminLoading ? 'Connexion...' : 'Se connecter'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
