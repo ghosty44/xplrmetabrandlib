@@ -59,4 +59,7 @@ export type Shoe = {
   name: string;
   startDate: string; // YYYY-MM-DD
   startKm?: number;  // km déjà sur les chaussures avant le début du suivi
+  garminId?: number; // gearPk Garmin — présent si importé depuis Garmin
+  garminKm?: number; // km total précis depuis Garmin API (mise à jour automatique)
+  source?: 'garmin' | 'manual';
 };

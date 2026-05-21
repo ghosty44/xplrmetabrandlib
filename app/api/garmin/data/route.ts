@@ -36,6 +36,35 @@ export async function POST(req: NextRequest) {
 
     const refreshedTokens = client.exportToken() as GarminTokens;
 
+    // Fetch gear (shoes) via authenticated internal HTTP client
+    type GarminGearItem = {
+      gearPk: number;
+      gearTypeText: string;
+      displayName: string;
+      customMakeModel?: string;
+      dateBegin: string;
+      totalMeters: number;
+      maximumMeters: number;
+    };
+    let gear: GarminGearItem[] = [];
+    try {
+      const profile = profileResult.status === 'fulfilled' ? profileResult.value as { displayName?: string } : null;
+      const displayName = profile?.displayName;
+      if (displayName) {
+        const gearUrl = `https://connectapi.garmin.com/gear-service/gear/filterGear?userDisplayName=${encodeURIComponent(displayName)}&start=0&limit=100`;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const httpClient = (client as any).client;
+        const res = await httpClient.get(gearUrl);
+        if (Array.isArray(res?.data)) gear = res.data;
+        else if (Array.isArray(res)) gear = res;
+      }
+    } catch { /* gear not available, ignore */ }
+
+    const shoes = gear.filter(g =>
+      g.gearTypeText?.toUpperCase().includes('SHOE') ||
+      g.gearTypeText?.toUpperCase().includes('RUNNING')
+    );
+
     return NextResponse.json({
       success: true,
       refreshedTokens,
@@ -47,6 +76,7 @@ export async function POST(req: NextRequest) {
         sleep: sleepResult.status === 'fulfilled' ? sleepResult.value : null,
         heartRate: heartRateResult.status === 'fulfilled' ? heartRateResult.value : null,
         weight: weightResult.status === 'fulfilled' ? weightResult.value : null,
+        shoes,
       },
     });
   } catch (err) {

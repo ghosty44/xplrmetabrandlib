@@ -6,6 +6,16 @@ import { loadGarminTokens, saveGarminTokens, GarminTokens, loadShoes, saveShoes 
 import { formatPace } from '@/lib/zones';
 import { Shoe } from '@/lib/types';
 
+type GarminGearItem = {
+  gearPk: number;
+  gearTypeText: string;
+  displayName: string;
+  customMakeModel?: string;
+  dateBegin: string;
+  totalMeters: number;
+  maximumMeters: number;
+};
+
 type GarminData = {
   profile: {
     displayName: string;
@@ -74,6 +84,7 @@ type GarminData = {
       muscleMass: number | null;
     }>;
   } | null;
+  shoes?: GarminGearItem[];
 };
 
 function fmtDuration(seconds: number): string {
@@ -112,12 +123,35 @@ function activityIcon(typeKey: string): string {
 }
 
 function shoeKm(shoe: Shoe, activities: GarminData['activities']): number {
+  if (shoe.garminKm != null) return Math.round(shoe.garminKm);
   const start = new Date(shoe.startDate).getTime();
   const fromActivities = (activities ?? [])
     .filter(a => (a.activityType?.typeKey ?? '').includes('running')
               && new Date(a.startTimeLocal).getTime() >= start)
     .reduce((sum, a) => sum + a.distance, 0) / 1000;
   return Math.round(fromActivities + (shoe.startKm ?? 0));
+}
+
+function syncGarminShoes(garminShoes: GarminGearItem[], current: Shoe[]): Shoe[] {
+  const result = [...current];
+  for (const g of garminShoes) {
+    const km = Math.round(g.totalMeters / 1000);
+    const existing = result.findIndex(s => s.garminId === g.gearPk);
+    if (existing >= 0) {
+      result[existing] = { ...result[existing], garminKm: km };
+    } else {
+      const dateStr = g.dateBegin?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+      result.push({
+        id: `garmin-${g.gearPk}`,
+        name: g.displayName || g.customMakeModel || 'Chaussures Garmin',
+        startDate: dateStr,
+        garminId: g.gearPk,
+        garminKm: km,
+        source: 'garmin',
+      });
+    }
+  }
+  return result;
 }
 
 function shoeBarColor(km: number): string {
@@ -202,6 +236,13 @@ export default function GarminDashboard() {
       } else {
         if (json.refreshedTokens) saveGarminTokens(json.refreshedTokens);
         setData(json.data ?? null);
+        if (json.data?.shoes?.length) {
+          setShoes(prev => {
+            const synced = syncGarminShoes(json.data!.shoes!, prev);
+            saveShoes(synced);
+            return synced;
+          });
+        }
       }
     } catch {
       setError('Erreur réseau');
@@ -351,7 +392,12 @@ export default function GarminDashboard() {
                           <img src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Running%20shoe/3D/running_shoe_3d.png" alt="chaussure" width={44} height={44} className="flex-shrink-0 mt-0.5" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <p className="text-[14px] font-bold text-[#0F0F10] truncate">{shoe.name}</p>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <p className="text-[14px] font-bold text-[#0F0F10] truncate">{shoe.name}</p>
+                                {shoe.source === 'garmin' && (
+                                  <span className="flex-shrink-0 text-[9px] font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded-full">G</span>
+                                )}
+                              </div>
                               <button onClick={() => removeShoe(shoe.id)} className="text-[18px] text-[#8E8E93] leading-none flex-shrink-0" aria-label="Supprimer">×</button>
                             </div>
                             <p className="text-[11px] text-[#8E8E93] mb-2">Depuis le {new Date(shoe.startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
