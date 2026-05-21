@@ -99,7 +99,7 @@ function SetupPageContent() {
         body: JSON.stringify({ messages: [{ role: 'user', content: 'Bonjour' }] }),
       });
       const data = await res.json() as { message?: string; error?: string };
-      const msg = data.message || data.error || 'Bonjour ! Je suis Campus Coach. Quelle course prépares-tu ?';
+      const msg = data.message || data.error || 'Bonjour ! Je suis RunAI. Quelle course prépares-tu ?';
       // Keep the initial 'Bonjour' in history (Gemini requires history to start with 'user')
       // but mark it hidden so it doesn't render in the UI
       setMessages([
@@ -107,7 +107,7 @@ function SetupPageContent() {
         { role: 'model', content: msg },
       ]);
     } catch {
-      setMessages([{ role: 'model', content: 'Bonjour ! Je suis Campus Coach. Quelle course prépares-tu ?' }]);
+      setMessages([{ role: 'model', content: 'Bonjour ! Je suis RunAI. Quelle course prépares-tu ?' }]);
     } finally {
       setThinking(false);
     }
@@ -216,7 +216,7 @@ function SetupPageContent() {
 
         {welcomePhase === 'hero' ? (
           <div className="relative flex-1 flex flex-col justify-end px-6 pb-14 max-w-md mx-auto w-full">
-            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-[0.2em] mb-3">Campus Coach</p>
+            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-[0.2em] mb-3">RunAI</p>
             <h1 className="text-[38px] font-black text-white leading-[1.1] mb-3">
               Ton plan<br />running<br />sur mesure.
             </h1>
@@ -475,7 +475,7 @@ function SetupPageContent() {
             <span className="text-[#C8E635] font-black text-[14px]">CC</span>
           </div>
           <div>
-            <p className="text-[15px] font-black text-[#0F0F10]">Campus Coach</p>
+            <p className="text-[15px] font-black text-[#0F0F10]">RunAI</p>
             <p className="text-[11px] text-[#8E8E93]">Création de ton plan</p>
           </div>
         </div>

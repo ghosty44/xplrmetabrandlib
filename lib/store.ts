@@ -1,10 +1,10 @@
 import { TrainingPlan, UserProfile, Shoe } from './types';
 
-const PLAN_KEY = 'campus_coach_plan';
-const PROFILE_KEY = 'campus_coach_profile';
-const GARMIN_KEY = 'campus_coach_garmin_tokens';
-const USER_ID_KEY = 'campus_coach_user_id';
-const SHOES_KEY = 'campus_coach_shoes';
+const PLAN_KEY = 'runai_plan';
+const PROFILE_KEY = 'runai_profile';
+const GARMIN_KEY = 'runai_garmin_tokens';
+const USER_ID_KEY = 'runai_user_id';
+const SHOES_KEY = 'runai_shoes';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // ── User ID (stable key for DB row) ────────────────────────────────────────
@@ -12,7 +12,7 @@ const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 // localStorage + cookie assurent la persistance (le cookie survit aux redéploiements).
 // Sans ID stocké → nouvel utilisateur → redirigé vers /setup.
 
-const UID_COOKIE = 'cc_uid';
+const UID_COOKIE = 'runai_uid';
 const UID_MAX_AGE = 365 * 24 * 3600; // 1 an
 
 export function loadUserId(): string | null {

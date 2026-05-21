@@ -10,13 +10,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Campus Coach",
+  title: "RunAI",
   description: "Coaching running personnalisé",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Campus Coach",
+    title: "RunAI",
   },
   icons: {
     apple: "/apple-touch-icon.png",

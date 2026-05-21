@@ -2,8 +2,8 @@ import { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Campus Coach',
-    short_name: 'Campus Coach',
+    name: 'RunAI',
+    short_name: 'RunAI',
     description: 'Ton plan running personnalisé',
     start_url: '/',
     display: 'standalone',

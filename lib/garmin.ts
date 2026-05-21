@@ -124,7 +124,7 @@ export async function syncSessionToGarmin(
       estimatedDistanceUnit: { unitId: null, unitKey: null, factor: null },
       poolLength: 0,
       poolLengthUnit: { unitId: null, unitKey: null, factor: null },
-      workoutProvider: 'campus_coach',
+      workoutProvider: 'runai',
       workoutSourceId: session.id,
       consumer: null,
       atpPlanId: null,

@@ -198,7 +198,7 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
-          title: 'Campus Coach',
+          title: 'RunAI',
           body: 'Les notifications sont activées !',
           url: '/',
         }),
