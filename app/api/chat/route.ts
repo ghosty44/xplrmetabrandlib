@@ -14,14 +14,18 @@ Informations à collecter dans l'ordre :
 
 Règles impératives :
 - Pose UNE seule question à la fois
-- 2 phrases max par message
+- 2 phrases max par réponse pendant la collecte
 - Confirme chaque info reçue en une phrase avant de passer à la suivante
-- Quand tu as les 4 infos obligatoires (course, date, temps, km/sem), génère le plan
+- Quand tu as les 4 infos obligatoires (course, date, temps, km/sem), génère le profil
 
-Quand tu as toutes les infos obligatoires, inclus ce bloc dans ta réponse (invisible pour l'utilisateur) :
+Quand tu as toutes les infos obligatoires, ta réponse doit contenir DEUX choses :
+
+1. Un bloc PROFILE (invisible) avec les données :
 <PROFILE>{"goalRace":"marathon","goalDate":"YYYY-MM-DD","goalTimeMin":210,"weeklyKm":40,"thresholdPaceSec":275}</PROFILE>
+Si tu as la FC max, ajoute "maxHR":185 dans le JSON.
 
-Si tu as aussi la FC max, ajoute "maxHR":185 dans le JSON.
+2. Un bloc EXPLANATION (invisible) avec une explication coach du plan proposé, 3-4 phrases percutantes :
+<EXPLANATION>Ton plan de X semaines est construit autour de... [explique la logique du plan, pourquoi ce nombre de semaines, quels types de séances et pourquoi ils sont adaptés à l'objectif et au profil, ce qui va progresser semaine après semaine]</EXPLANATION>
 
 Règles de calcul :
 - thresholdPaceSec = Math.round((goalTimeMin * 60 / distanceKm) * 0.92)
@@ -29,6 +33,8 @@ Règles de calcul :
 - goalRace : exactement "marathon", "halfMarathon", "10k", ou "5k"
 - goalDate : ISO YYYY-MM-DD (interprète l'année comme 2025 ou 2026 selon le contexte)
 - goalTimeMin : en minutes entières
+
+Le texte visible quand tu génères le profil doit être UNE phrase d'accroche courte et motivante (ex: "Parfait, voici ce que j'ai préparé pour toi !"), sans détailler le plan — les détails sont dans l'EXPLANATION.
 
 Commence par : une phrase de bienvenue et demande la course cible.`;
 
@@ -64,14 +70,23 @@ export async function POST(req: NextRequest) {
   const raw = result.response.text();
 
   const profileMatch = raw.match(/<PROFILE>([\s\S]*?)<\/PROFILE>/);
+  const explanationMatch = raw.match(/<EXPLANATION>([\s\S]*?)<\/EXPLANATION>/);
+
   let profile = null;
-  const message = raw.replace(/<PROFILE>[\s\S]*?<\/PROFILE>/g, '').trim();
+  let explanation: string | null = null;
+  const message = raw
+    .replace(/<PROFILE>[\s\S]*?<\/PROFILE>/g, '')
+    .replace(/<EXPLANATION>[\s\S]*?<\/EXPLANATION>/g, '')
+    .trim();
 
   if (profileMatch) {
     try {
       profile = JSON.parse(profileMatch[1].trim());
     } catch { /* invalid JSON, ignore */ }
   }
+  if (explanationMatch) {
+    explanation = explanationMatch[1].trim();
+  }
 
-  return NextResponse.json({ message, profile });
+  return NextResponse.json({ message, profile, explanation });
 }
