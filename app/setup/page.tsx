@@ -98,8 +98,9 @@ function SetupPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: [{ role: 'user', content: 'Bonjour' }] }),
       });
-      const data = await res.json() as { message: string };
-      setMessages([{ role: 'model', content: data.message }]);
+      const data = await res.json() as { message?: string; error?: string };
+      const msg = data.message || data.error || 'Bonjour ! Je suis Campus Coach. Quelle course prépares-tu ?';
+      setMessages([{ role: 'model', content: msg }]);
     } catch {
       setMessages([{ role: 'model', content: 'Bonjour ! Je suis Campus Coach. Quelle course prépares-tu ?' }]);
     } finally {
@@ -123,13 +124,13 @@ function SetupPageContent() {
         body: JSON.stringify({ messages: next }),
       });
       const data = await res.json() as {
-        message: string;
+        message?: string;
         profile?: UserProfile | null;
         explanation?: string | null;
         error?: string;
       };
 
-      const reply = data.message || 'Désolé, une erreur est survenue.';
+      const reply = data.message || data.error || 'Désolé, une erreur est survenue.';
       setMessages((prev) => [...prev, { role: 'model', content: reply }]);
 
       if (data.profile) {
