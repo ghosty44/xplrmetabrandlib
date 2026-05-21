@@ -7,11 +7,15 @@ export type ZoneConfig = {
 };
 
 export type Step = {
-  zone: Zone;
+  zone?: Zone;
   durationMin: number;
   targetPace?: { minSec: number; maxSec: number }; // secondes/km
   reps?: number;
   isRecovery?: boolean;
+  // Strength-specific
+  exercise?: string;
+  sets?: number;
+  repCount?: string; // ex: "15 reps", "30s", "10/jambe"
 };
 
 export type GpxPoint = { lat: number; lng: number };
@@ -28,6 +32,7 @@ export type Session = {
   garminSynced?: boolean;
   gpxCoords?: GpxPoint[];
   gpxDistanceKm?: number;
+  type?: 'running' | 'strength';
 };
 
 export type UserProfile = {
@@ -39,6 +44,7 @@ export type UserProfile = {
   maxHR?: number; // fréquence cardiaque maximale (bpm)
   availableDays?: number[]; // 1=Lundi...7=Dimanche, ex: [2,4,6,7]
   weeklySessionsPerWeek?: number;
+  strengthPerWeek?: 0 | 1 | 2;
 };
 
 export type TrainingPlan = {

@@ -1,6 +1,8 @@
 import { Session, Step, TrainingPlan, UserProfile, Zone } from './types';
 import { getZonePaceRange } from './zones';
 
+// ── Running helpers ────────────────────────────────────────────────────────
+
 function makeStep(zone: Zone, durationMin: number, thresholdSec: number, isRecovery = false, reps?: number): Step {
   return {
     zone,
@@ -25,7 +27,7 @@ function makeIntervalSession(
   ];
   const total = warmupMin + (intervalMin + recoveryMin) * sets - recoveryMin + cooldownMin;
   return {
-    id, name, week, day, completed: false, garminSynced: false,
+    id, name, week, day, completed: false, garminSynced: false, type: 'running',
     description: `${sets}×${intervalMin}min ${intervalZone} · ${recoveryMin}min récup`,
     steps,
     totalMin: Math.max(total, warmupMin + cooldownMin),
@@ -38,7 +40,7 @@ function makeTempo(
   thresholdSec: number
 ): Session {
   return {
-    id, name: 'Tempo', week, day, completed: false, garminSynced: false,
+    id, name: 'Tempo', week, day, completed: false, garminSynced: false, type: 'running',
     description: `${tempoMin}min en allure seuil (zone 3)`,
     steps: [
       makeStep('EF', warmupMin, thresholdSec),
@@ -51,7 +53,7 @@ function makeTempo(
 
 function makeLongRun(id: string, week: number, day: number, durationMin: number, thresholdSec: number): Session {
   return {
-    id, name: 'Sortie Longue', week, day, completed: false, garminSynced: false,
+    id, name: 'Sortie Longue', week, day, completed: false, garminSynced: false, type: 'running',
     description: `${durationMin}min en endurance fondamentale (zone 2)`,
     steps: [makeStep('EF', durationMin, thresholdSec)],
     totalMin: durationMin,
@@ -60,7 +62,7 @@ function makeLongRun(id: string, week: number, day: number, durationMin: number,
 
 function makeEFRun(id: string, week: number, day: number, durationMin: number, thresholdSec: number): Session {
   return {
-    id, name: 'Endurance Fondamentale', week, day, completed: false, garminSynced: false,
+    id, name: 'Endurance Fondamentale', week, day, completed: false, garminSynced: false, type: 'running',
     description: `${durationMin}min en zone 2 — aisance respiratoire totale`,
     steps: [makeStep('EF', durationMin, thresholdSec)],
     totalMin: durationMin,
@@ -70,7 +72,7 @@ function makeEFRun(id: string, week: number, day: number, durationMin: number, t
 function makeRecovery(id: string, week: number, day: number, durationMin: number, thresholdSec: number): Session {
   const core = Math.max(durationMin - 10, 10);
   return {
-    id, name: 'Récupération Active', week, day, completed: false, garminSynced: false,
+    id, name: 'Récupération Active', week, day, completed: false, garminSynced: false, type: 'running',
     description: `${durationMin}min très facile — régénération`,
     steps: [
       makeStep('Recup', 5, thresholdSec, true),
@@ -81,37 +83,114 @@ function makeRecovery(id: string, week: number, day: number, durationMin: number
   };
 }
 
+// ── Strength training library ──────────────────────────────────────────────
+
+type Exercise = { name: string; sets: number; repCount: string; durationMin: number };
+
+const STRENGTH_EARLY: Exercise[] = [
+  { name: 'Planche',              sets: 3, repCount: '30s',      durationMin: 3 },
+  { name: 'Pont fessier',         sets: 3, repCount: '15 reps',  durationMin: 3 },
+  { name: 'Squat',                sets: 3, repCount: '15 reps',  durationMin: 4 },
+  { name: 'Gainage latéral',      sets: 3, repCount: '20s/côté', durationMin: 3 },
+  { name: 'Fentes statiques',     sets: 3, repCount: '12/jambe', durationMin: 4 },
+  { name: 'Chaise au mur',        sets: 3, repCount: '30s',      durationMin: 3 },
+];
+
+const STRENGTH_MID: Exercise[] = [
+  { name: 'Fentes marchées',           sets: 3, repCount: '10/jambe', durationMin: 4 },
+  { name: 'Pont fessier unilatéral',   sets: 3, repCount: '12/jambe', durationMin: 4 },
+  { name: 'Squat unilatéral',          sets: 3, repCount: '8/jambe',  durationMin: 4 },
+  { name: 'Gainage dynamique',         sets: 3, repCount: '12 reps',  durationMin: 3 },
+  { name: 'Mollets debout',            sets: 3, repCount: '20 reps',  durationMin: 3 },
+  { name: 'Superman',                  sets: 3, repCount: '15 reps',  durationMin: 3 },
+];
+
+const STRENGTH_LATE: Exercise[] = [
+  { name: 'Squat sauté',          sets: 3, repCount: '8 reps',   durationMin: 3 },
+  { name: 'Fentes sautées',       sets: 3, repCount: '6/jambe',  durationMin: 4 },
+  { name: 'Step-ups rapides',     sets: 3, repCount: '10/jambe', durationMin: 4 },
+  { name: 'Burpees',              sets: 3, repCount: '8 reps',   durationMin: 4 },
+  { name: 'Mollets en saut',      sets: 3, repCount: '15 reps',  durationMin: 3 },
+];
+
+const STRENGTH_TAPER: Exercise[] = [
+  { name: 'Planche',          sets: 2, repCount: '30s',      durationMin: 2 },
+  { name: 'Pont fessier',     sets: 2, repCount: '12 reps',  durationMin: 2 },
+  { name: 'Squat',            sets: 2, repCount: '10 reps',  durationMin: 2 },
+  { name: 'Fentes statiques', sets: 2, repCount: '8/jambe',  durationMin: 2 },
+];
+
+function makeStrengthSession(
+  id: string, week: number, day: number,
+  phase: 'early' | 'mid' | 'late' | 'taper'
+): Session {
+  const library = phase === 'taper' ? STRENGTH_TAPER
+    : phase === 'late' ? STRENGTH_LATE
+    : phase === 'mid' ? STRENGTH_MID
+    : STRENGTH_EARLY;
+
+  const warmup = 5;
+  const cooldown = 5;
+  const exerciseMin = library.reduce((sum, e) => sum + e.durationMin, 0);
+  const totalMin = warmup + exerciseMin + cooldown;
+
+  const steps: Step[] = [
+    // Warmup
+    { durationMin: warmup, exercise: 'Échauffement (marche + mobilité)', sets: 1, repCount: `${warmup}min` },
+    // Exercises
+    ...library.map((ex): Step => ({
+      durationMin: ex.durationMin,
+      exercise: ex.name,
+      sets: ex.sets,
+      repCount: ex.repCount,
+    })),
+    // Cooldown
+    { durationMin: cooldown, exercise: 'Retour au calme (étirements)', sets: 1, repCount: `${cooldown}min` },
+  ];
+
+  const phaseLabels = { early: 'Fondations', mid: 'Force', late: 'Puissance', taper: 'Maintien' };
+
+  return {
+    id, name: `Renforcement — ${phaseLabels[phase]}`, week, day,
+    completed: false, garminSynced: false, type: 'strength',
+    description: `${library.length} exercices · axe ${phaseLabels[phase].toLowerCase()} pour coureurs`,
+    steps,
+    totalMin,
+  };
+}
+
+// ── Plan generator ─────────────────────────────────────────────────────────
+
 export function generatePlan(profile: UserProfile): TrainingPlan {
   const { thresholdPaceSec, goalRace } = profile;
   const sessions: Session[] = [];
 
-  // Days (default Tue/Thu/Sat/Sun if not specified)
-  const days = profile.availableDays?.length === 4
-    ? profile.availableDays
-    : [2, 4, 6, 7];
+  const days = profile.availableDays?.length === 4 ? profile.availableDays : [2, 4, 6, 7];
   const [qualityDay, efDay, longDay, recovDay] = days;
+  const strengthPerWeek = profile.strengthPerWeek ?? 0;
 
-  // Plan duration — longer plans for longer distances
+  // Strength days = first non-running days
+  const allDays = [1, 2, 3, 4, 5, 6, 7];
+  const strengthDays = allDays.filter(d => !days.includes(d)).slice(0, strengthPerWeek);
+
   const totalWeeks = goalRace === 'marathon' ? 16
     : goalRace === 'halfMarathon' ? 12
     : goalRace === '10k' ? 10
     : 8;
 
-  // Tapering: shorter for shorter distances
   const taperWeeks = goalRace === 'marathon' ? 3
     : goalRace === 'halfMarathon' ? 2
     : 1;
   const buildWeeks = totalWeeks - taperWeeks;
 
-  // Long run targets
   const longBase = goalRace === 'marathon' ? 90
     : goalRace === 'halfMarathon' ? 65
     : goalRace === '10k' ? 50
     : 40;
-  const longPeak = goalRace === 'marathon' ? 150   // 2h30
-    : goalRace === 'halfMarathon' ? 105             // 1h45
-    : goalRace === '10k' ? 75                       // 1h15
-    : 60;                                           // 1h
+  const longPeak = goalRace === 'marathon' ? 150
+    : goalRace === 'halfMarathon' ? 105
+    : goalRace === '10k' ? 75
+    : 60;
 
   const taperFactors = goalRace === 'marathon' ? [0.80, 0.65, 0.50]
     : goalRace === 'halfMarathon' ? [0.70, 0.55]
@@ -122,12 +201,9 @@ export function generatePlan(profile: UserProfile): TrainingPlan {
   for (let w = 1; w <= totalWeeks; w++) {
     const taperIdx = w > buildWeeks ? w - buildWeeks - 1 : -1;
     const isTaper = taperIdx >= 0;
-
-    // 4-week periodization: weeks 1-3 build, week 4 assimilation (-20%)
     const cyclePos = ((w - 1) % 4) + 1;
     const isAssimilation = !isTaper && cyclePos === 4;
 
-    // Volume factor
     let volFactor: number;
     if (isTaper) {
       volFactor = taperFactors[taperIdx] ?? 0.55;
@@ -135,48 +211,41 @@ export function generatePlan(profile: UserProfile): TrainingPlan {
       volFactor = 0.80;
     } else {
       const cycle = Math.floor((w - 1) / 4);
-      const posInCycle = cyclePos - 1; // 0,1,2
+      const posInCycle = cyclePos - 1;
       volFactor = Math.min(1.0 + cycle * 0.24 + posInCycle * 0.08, 1.6);
     }
 
-    // Phase in build block (for session type selection)
     const buildPct = buildWeeks > 1 ? (w - 1) / (buildWeeks - 1) : 1;
     const phase: 'early' | 'mid' | 'late' | 'taper' = isTaper ? 'taper'
       : buildPct <= 0.4 ? 'early'
       : buildPct <= 0.75 ? 'mid'
       : 'late';
 
-    // ── Quality session (day 1) ───────────────────────────────────────────
+    // ── Quality session ────────────────────────────────────────────────────
     let quality: Session;
     if (phase === 'taper') {
-      // Taper: keep intensity, reduce volume — short allure-cible rappels
       quality = makeIntervalSession(`w${w}-q`, 'Rappel Allure Cible', w, qualityDay, 15, 10, 'Seuil', 2, 1, 3, thresholdPaceSec);
     } else if (isShort) {
-      // 5k / 10k — VO2max / VMA focus
-      const cfg = phase === 'early'
-        ? { name: 'VO2max Courts',        dur: 1,   rec: 1,   sets: 6 }
-        : phase === 'mid'
-        ? { name: 'VO2max Développement', dur: 2,   rec: 1.5, sets: 5 }
-        : { name: 'VO2max Spécifique',    dur: 3,   rec: 2,   sets: 4 };
+      const cfg = phase === 'early' ? { name: 'VO2max Courts',        dur: 1,   rec: 1,   sets: 6 }
+                : phase === 'mid'   ? { name: 'VO2max Développement', dur: 2,   rec: 1.5, sets: 5 }
+                :                    { name: 'VO2max Spécifique',     dur: 3,   rec: 2,   sets: 4 };
       quality = makeIntervalSession(`w${w}-q`, cfg.name, w, qualityDay, 15, 10, 'VO2max', cfg.dur, cfg.rec, cfg.sets, thresholdPaceSec);
     } else {
-      // Semi / Marathon — seuil & tempo focus
       if (phase === 'early') {
-        quality = makeIntervalSession(`w${w}-q`, 'Intervalles Seuil', w, qualityDay, 20, 10, 'Seuil', 2, 1, 5, thresholdPaceSec);
+        quality = makeIntervalSession(`w${w}-q`, 'Intervalles Seuil',  w, qualityDay, 20, 10, 'Seuil', 2, 1, 5, thresholdPaceSec);
       } else if (phase === 'mid') {
-        quality = makeIntervalSession(`w${w}-q`, 'Seuil Longs', w, qualityDay, 20, 10, 'Seuil', 4, 2, 3, thresholdPaceSec);
+        quality = makeIntervalSession(`w${w}-q`, 'Seuil Longs',        w, qualityDay, 20, 10, 'Seuil', 4, 2, 3, thresholdPaceSec);
       } else {
         quality = makeTempo(`w${w}-q`, w, qualityDay, 20, 25, 10, thresholdPaceSec);
       }
     }
     sessions.push(quality);
 
-    // ── EF run (day 2) — règle 80/20 ──────────────────────────────────────
-    // Remplace l'ancienne 2ème séance de qualité
+    // ── EF run (80/20) ────────────────────────────────────────────────────
     const efMin = Math.max(25, Math.round((28 + w * 2) * volFactor));
     sessions.push(makeEFRun(`w${w}-ef`, w, efDay, efMin, thresholdPaceSec));
 
-    // ── Sortie longue (day 3) ─────────────────────────────────────────────
+    // ── Long run ──────────────────────────────────────────────────────────
     let longMin: number;
     if (isTaper) {
       longMin = Math.round(longPeak * (taperFactors[taperIdx] ?? 0.55));
@@ -186,10 +255,18 @@ export function generatePlan(profile: UserProfile): TrainingPlan {
     }
     sessions.push(makeLongRun(`w${w}-lr`, w, longDay, Math.max(longMin, 25), thresholdPaceSec));
 
-    // ── Récupération (day 4) ──────────────────────────────────────────────
+    // ── Recovery ──────────────────────────────────────────────────────────
     const recovMin = Math.max(15, Math.round((isTaper ? 20 : isAssimilation ? 25 : 30) * volFactor));
     sessions.push(makeRecovery(`w${w}-rec`, w, recovDay, recovMin, thresholdPaceSec));
+
+    // ── Strength sessions ─────────────────────────────────────────────────
+    strengthDays.forEach((sDay, idx) => {
+      sessions.push(makeStrengthSession(`w${w}-str${idx + 1}`, w, sDay, phase));
+    });
   }
+
+  // Sort sessions by week then day
+  sessions.sort((a, b) => a.week !== b.week ? a.week - b.week : a.day - b.day);
 
   return {
     id: `plan-${Date.now()}`,

@@ -120,7 +120,8 @@ export default function SessionPage() {
   }
 
   const totalMin = session.totalMin;
-  const uniqueZones = Array.from(new Set(session.steps.map((s) => s.zone)));
+  const isStrength = session.type === 'strength';
+  const uniqueZones = Array.from(new Set(session.steps.map((s) => s.zone).filter(Boolean))) as import('@/lib/types').Zone[];
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
@@ -166,8 +167,8 @@ export default function SessionPage() {
           </div>
         )}
 
-        {/* Route map */}
-        {session.gpxCoords && session.gpxCoords.length > 0 ? (
+        {/* Route map — running only */}
+        {!isStrength && session.gpxCoords && session.gpxCoords.length > 0 ? (
           <div>
             <RouteMap coords={session.gpxCoords} distanceKm={session.gpxDistanceKm} />
             <button
@@ -177,7 +178,7 @@ export default function SessionPage() {
               Modifier le tracé
             </button>
           </div>
-        ) : (
+        ) : !isStrength ? (
           <button
             onClick={() => setShowRouteEditor(true)}
             className="w-full py-3.5 rounded-[20px] border border-dashed border-[#8E8E93]/40 text-[13px] font-semibold text-[#8E8E93] flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
@@ -187,7 +188,7 @@ export default function SessionPage() {
             </svg>
             Tracer un itinéraire
           </button>
-        )}
+        ) : null}
 
         {/* Route editor modal */}
         {showRouteEditor && (
@@ -198,98 +199,121 @@ export default function SessionPage() {
           />
         )}
 
-        {/* Interval chart card */}
-        <div className="rounded-[24px] bg-[#0F0F10] overflow-hidden p-5">
-          <div className="absolute opacity-0 pointer-events-none" />
-          <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-4">Graphique des intervalles</p>
-
-          <div className="flex items-end gap-0.5 h-20 mb-4">
+        {isStrength ? (
+          /* ── Strength exercise list ── */
+          <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#F2F2F7] flex items-center gap-2">
+              <span className="text-lg">💪</span>
+              <p className="text-[13px] font-semibold text-[#0F0F10]">Programme de la séance</p>
+            </div>
             {session.steps.map((step, idx) => {
-              const reps = step.reps ?? 1;
-              const config = getZoneConfig(step.zone);
-              const intensity = ZONE_INTENSITY[step.zone] ?? 0.5;
-              const widthPct = (step.durationMin * reps) / totalMin;
+              const isWarmCool = idx === 0 || idx === session.steps.length - 1;
               return (
-                <div
-                  key={idx}
-                  className="rounded-t-[4px] flex-shrink-0"
-                  style={{
-                    backgroundColor: config.color,
-                    width: `${widthPct * 100}%`,
-                    height: `${intensity * 100}%`,
-                  }}
-                  title={`${config.label} – ${step.durationMin * reps} min`}
-                />
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {uniqueZones.map((zone) => {
-              const cfg = getZoneConfig(zone);
-              return (
-                <div key={zone} className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
-                  <span className="text-[11px] text-[#8E8E93]">{cfg.label}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Steps list */}
-        <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#F2F2F7]">
-            <p className="text-[13px] font-semibold text-[#0F0F10]">Détail des étapes</p>
-          </div>
-          {session.steps.map((step, idx) => {
-            const config = getZoneConfig(step.zone);
-            const reps = step.reps ?? 1;
-            const effectiveDuration = step.durationMin * reps;
-            return (
-              <div key={idx} className="flex items-center gap-4 px-5 py-3.5 border-b border-[#F2F2F7]/80 last:border-0">
-                <div
-                  className="w-1 self-stretch rounded-full flex-shrink-0"
-                  style={{ backgroundColor: config.color, minHeight: '36px' }}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[13px] font-semibold text-[#0F0F10]">{config.label}</span>
-                    {step.isRecovery && (
-                      <span className="text-[10px] bg-[#F2F2F7] text-[#8E8E93] px-1.5 py-0.5 rounded-md font-medium">récup</span>
+                <div key={idx} className="flex items-center gap-4 px-5 py-3.5 border-b border-[#F2F2F7]/80 last:border-0">
+                  <div
+                    className="w-1 self-stretch rounded-full flex-shrink-0"
+                    style={{ backgroundColor: isWarmCool ? '#9ca3af' : '#6366f1', minHeight: '36px' }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-[#0F0F10]">{step.exercise}</p>
+                    {!isWarmCool && step.sets && (
+                      <p className="text-[11px] text-[#8E8E93]">{step.sets} séries · {step.repCount}</p>
                     )}
-                    {reps > 1 && (
-                      <span className="text-[10px] bg-[#F2F2F7] text-[#0F0F10] px-1.5 py-0.5 rounded-md font-semibold">×{reps}</span>
+                    {isWarmCool && (
+                      <p className="text-[11px] text-[#8E8E93]">{step.durationMin} min</p>
                     )}
                   </div>
-                  <p className="text-[11px] text-[#8E8E93]">
-                    {reps > 1 ? `${reps}×${step.durationMin} min = ${effectiveDuration} min` : `${effectiveDuration} min`}
-                  </p>
+                  {!isWarmCool && (
+                    <div className="w-8 h-8 rounded-[10px] bg-[#6366f1]/10 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[11px] font-bold text-[#6366f1]">{step.sets}</span>
+                    </div>
+                  )}
                 </div>
-                {(() => {
-                  const hrPct = getZoneHRRange(step.zone);
-                  const maxHR = plan?.profile.maxHR;
-                  const hrLabel = maxHR
-                    ? `${Math.round(maxHR * hrPct.min / 100)}–${Math.round(maxHR * hrPct.max / 100)} bpm`
-                    : `${hrPct.min}–${hrPct.max}% FCmax`;
+              );
+            })}
+          </div>
+        ) : (
+          <>
+            {/* ── Running interval chart ── */}
+            <div className="rounded-[24px] bg-[#0F0F10] overflow-hidden p-5">
+              <p className="text-[10px] font-semibold text-[#8E8E93] uppercase tracking-[0.15em] mb-4">Graphique des intervalles</p>
+              <div className="flex items-end gap-0.5 h-20 mb-4">
+                {session.steps.map((step, idx) => {
+                  if (!step.zone) return null;
+                  const reps = step.reps ?? 1;
+                  const config = getZoneConfig(step.zone);
+                  const intensity = ZONE_INTENSITY[step.zone] ?? 0.5;
+                  const widthPct = (step.durationMin * reps) / totalMin;
                   return (
-                    <div className="text-right flex-shrink-0">
-                      {step.targetPace && (
-                        <>
-                          <p className="text-[13px] font-bold text-[#0F0F10] tabular-nums">
-                            {formatPace(step.targetPace.minSec)}–{formatPace(step.targetPace.maxSec)}
-                          </p>
-                          <p className="text-[10px] text-[#8E8E93]">/km</p>
-                        </>
-                      )}
-                      <p className="text-[11px] font-semibold text-[#8E8E93] tabular-nums mt-0.5">{hrLabel}</p>
+                    <div key={idx} className="rounded-t-[4px] flex-shrink-0"
+                      style={{ backgroundColor: config.color, width: `${widthPct * 100}%`, height: `${intensity * 100}%` }}
+                      title={`${config.label} – ${step.durationMin * reps} min`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {uniqueZones.map((zone) => {
+                  const cfg = getZoneConfig(zone);
+                  return (
+                    <div key={zone} className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
+                      <span className="text-[11px] text-[#8E8E93]">{cfg.label}</span>
                     </div>
                   );
-                })()}
+                })}
               </div>
-            );
-          })}
-        </div>
+            </div>
+
+            {/* ── Running steps list ── */}
+            <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#F2F2F7]">
+                <p className="text-[13px] font-semibold text-[#0F0F10]">Détail des étapes</p>
+              </div>
+              {session.steps.map((step, idx) => {
+                if (!step.zone) return null;
+                const config = getZoneConfig(step.zone);
+                const reps = step.reps ?? 1;
+                const effectiveDuration = step.durationMin * reps;
+                return (
+                  <div key={idx} className="flex items-center gap-4 px-5 py-3.5 border-b border-[#F2F2F7]/80 last:border-0">
+                    <div className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: config.color, minHeight: '36px' }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[13px] font-semibold text-[#0F0F10]">{config.label}</span>
+                        {step.isRecovery && <span className="text-[10px] bg-[#F2F2F7] text-[#8E8E93] px-1.5 py-0.5 rounded-md font-medium">récup</span>}
+                        {reps > 1 && <span className="text-[10px] bg-[#F2F2F7] text-[#0F0F10] px-1.5 py-0.5 rounded-md font-semibold">×{reps}</span>}
+                      </div>
+                      <p className="text-[11px] text-[#8E8E93]">
+                        {reps > 1 ? `${reps}×${step.durationMin} min = ${effectiveDuration} min` : `${effectiveDuration} min`}
+                      </p>
+                    </div>
+                    {(() => {
+                      const hrPct = getZoneHRRange(step.zone!);
+                      const maxHR = plan?.profile.maxHR;
+                      const hrLabel = maxHR
+                        ? `${Math.round(maxHR * hrPct.min / 100)}–${Math.round(maxHR * hrPct.max / 100)} bpm`
+                        : `${hrPct.min}–${hrPct.max}% FCmax`;
+                      return (
+                        <div className="text-right flex-shrink-0">
+                          {step.targetPace && (
+                            <>
+                              <p className="text-[13px] font-bold text-[#0F0F10] tabular-nums">
+                                {formatPace(step.targetPace.minSec)}–{formatPace(step.targetPace.maxSec)}
+                              </p>
+                              <p className="text-[10px] text-[#8E8E93]">/km</p>
+                            </>
+                          )}
+                          <p className="text-[11px] font-semibold text-[#8E8E93] tabular-nums mt-0.5">{hrLabel}</p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* Sync result */}
         {syncResult && (
@@ -309,13 +333,15 @@ export default function SessionPage() {
 
         {/* Action buttons */}
         <div className="flex gap-2 pt-1">
-          <button
-            onClick={handleGarminSync}
-            disabled={syncing || !!session.garminSynced}
-            className="flex-1 py-3.5 px-4 rounded-[16px] bg-white border border-black/8 text-[13px] font-semibold text-[#0F0F10] disabled:opacity-40 transition-all active:scale-[0.97]"
-          >
-            {syncing ? 'Sync...' : session.garminSynced ? '✓ Garmin' : 'Sync Garmin'}
-          </button>
+          {!isStrength && (
+            <button
+              onClick={handleGarminSync}
+              disabled={syncing || !!session.garminSynced}
+              className="flex-1 py-3.5 px-4 rounded-[16px] bg-white border border-black/8 text-[13px] font-semibold text-[#0F0F10] disabled:opacity-40 transition-all active:scale-[0.97]"
+            >
+              {syncing ? 'Sync...' : session.garminSynced ? '✓ Garmin' : 'Sync Garmin'}
+            </button>
+          )}
           <button
             onClick={handleComplete}
             disabled={session.completed}

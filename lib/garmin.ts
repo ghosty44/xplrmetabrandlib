@@ -65,7 +65,7 @@ export async function syncSessionToGarmin(
     const workoutSteps = session.steps.map((step, idx) => {
       const reps = step.reps ?? 1;
       const durationSec = step.durationMin * 60 * reps;
-      const zoneLabel = ZONE_CONFIGS[step.zone]?.label ?? step.zone;
+      const zoneLabel = step.zone ? (ZONE_CONFIGS[step.zone]?.label ?? step.zone) : (step.exercise ?? 'Exercice');
       const isRecovery = step.isRecovery ?? false;
 
       // Garmin pace targets are in m/s (speed), not sec/km

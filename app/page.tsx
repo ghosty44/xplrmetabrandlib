@@ -94,42 +94,45 @@ function SessionCard({ session, date }: { session: Session; date: Date }) {
 
         <p className="text-[11px] text-[#8E8E93] mb-2.5">{totalDuration} min</p>
 
-        <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden mb-2.5">
-          {session.steps.map((step, i) => {
-            const config = getZoneConfig(step.zone);
-            const reps = step.reps ?? 1;
-            const width = (step.durationMin * reps) / totalDuration;
-            return (
-              <div
-                key={i}
-                style={{
-                  backgroundColor: config.color,
-                  flexBasis: `${width * 100}%`,
-                  flexShrink: 0,
-                  flexGrow: 0,
-                }}
-                title={config.label}
-              />
-            );
-          })}
-        </div>
-
-        {/* Zone chips */}
-        <div className="flex flex-wrap gap-1">
-          {Array.from(new Set(session.steps.filter((s) => !s.isRecovery).map((s) => s.zone))).map((zone) => {
-            const cfg = getZoneConfig(zone);
-            return (
-              <span
-                key={zone}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md"
-                style={{ backgroundColor: cfg.color + '22' }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
-                <span className="text-[9px] font-semibold text-[#0F0F10]">{ZONE_SHORT[zone]}</span>
-              </span>
-            );
-          })}
-        </div>
+        {session.type === 'strength' ? (
+          <div className="flex flex-wrap gap-1">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#6366f1]/12">
+              <span className="text-[9px] font-semibold text-[#6366f1]">💪 {session.steps.filter(s => s.exercise && !s.exercise.startsWith('É') && !s.exercise.startsWith('R')).length} exercices</span>
+            </span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#F2F2F7]">
+              <span className="text-[9px] font-semibold text-[#8E8E93]">{totalDuration} min</span>
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className="flex gap-0.5 h-1.5 rounded-full overflow-hidden mb-2.5">
+              {session.steps.map((step, i) => {
+                if (!step.zone) return null;
+                const config = getZoneConfig(step.zone);
+                const reps = step.reps ?? 1;
+                const width = (step.durationMin * reps) / totalDuration;
+                return (
+                  <div
+                    key={i}
+                    style={{ backgroundColor: config.color, flexBasis: `${width * 100}%`, flexShrink: 0, flexGrow: 0 }}
+                    title={config.label}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {Array.from(new Set(session.steps.filter(s => !s.isRecovery && s.zone).map(s => s.zone!))).map((zone) => {
+                const cfg = getZoneConfig(zone);
+                return (
+                  <span key={zone} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md" style={{ backgroundColor: cfg.color + '22' }}>
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
+                    <span className="text-[9px] font-semibold text-[#0F0F10]">{ZONE_SHORT[zone]}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </Link>
   );
