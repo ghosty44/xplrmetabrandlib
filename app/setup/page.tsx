@@ -11,6 +11,18 @@ import { formatPace } from '@/lib/zones';
 type Phase = 'chat' | 'preview' | 'garmin';
 type ChatMessage = { role: 'user' | 'model'; content: string; hidden?: boolean };
 
+const CHAT_KEY = 'runai_chat_messages';
+
+function saveChatMessages(msgs: ChatMessage[]) {
+  try { localStorage.setItem(CHAT_KEY, JSON.stringify(msgs)); } catch {}
+}
+function loadChatMessages(): ChatMessage[] {
+  try { return JSON.parse(localStorage.getItem(CHAT_KEY) ?? '[]') as ChatMessage[]; } catch { return []; }
+}
+function clearChatMessages() {
+  try { localStorage.removeItem(CHAT_KEY); } catch {}
+}
+
 const RACE_LABELS: Record<string, string> = {
   marathon: 'Marathon',
   halfMarathon: 'Semi-Marathon',
@@ -81,10 +93,19 @@ function SetupPageContent() {
 
   useEffect(() => {
     if (!showWelcome && messages.length === 0) {
-      kickstart();
+      const saved = loadChatMessages();
+      if (saved.length > 0) {
+        setMessages(saved);
+      } else {
+        kickstart();
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWelcome]);
+
+  useEffect(() => {
+    if (messages.length > 0) saveChatMessages(messages);
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -154,6 +175,7 @@ function SetupPageContent() {
 
   function confirmPlan() {
     if (!pendingPlan || !pendingProfile) return;
+    clearChatMessages();
     saveProfile(pendingProfile);
     savePlan(pendingPlan);
     const userId = getOrCreateUserId();
@@ -166,6 +188,7 @@ function SetupPageContent() {
   }
 
   function restartChat() {
+    clearChatMessages();
     setPendingPlan(null);
     setPendingProfile(null);
     setPlanExplanation('');
