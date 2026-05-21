@@ -23,6 +23,25 @@ function clearChatMessages() {
   try { localStorage.removeItem(CHAT_KEY); } catch {}
 }
 
+function getQuickReplies(lastBotMsg: string): string[] {
+  const m = lastBotMsg.toLowerCase();
+  if (m.includes('course') || m.includes('prépares-tu') || m.includes('distance') || m.includes('marathon') || m.includes('semi') || m.includes('10k') || m.includes('5k'))
+    return ['Marathon', 'Semi-marathon', '10 km', '5 km'];
+  if (m.includes('km/semaine') || m.includes('kilomètre') || m.includes('volume') || m.includes('km par semaine') || m.includes('séances par semaine') || m.includes('semaines'))
+    return ['30 km/sem · 3 séances', '40 km/sem · 4 séances', '50 km/sem · 4 séances', '60 km/sem · 5 séances'];
+  if (m.includes('jours') || m.includes('disponible') || m.includes('entraîner'))
+    return ['Mar · Jeu · Sam · Dim', 'Lun · Mer · Sam · Dim', 'Lun · Mar · Jeu · Sam', 'Mar · Jeu · Ven · Sam'];
+  if (m.includes('renforcement') || m.includes('musculaire') || m.includes('muscu'))
+    return ['0 séance', '1 séance/semaine', '2 séances/semaine'];
+  if (m.includes('blessure') || m.includes('blessé') || m.includes('douleur') || m.includes('historique'))
+    return ['Aucune blessure', 'Genou', "Tendon d'Achille", 'Dos / hanche'];
+  if (m.includes('fc') || m.includes('fréquence cardiaque') || m.includes('cardiaque') || m.includes('fcmax') || m.includes('fc max'))
+    return ['Je ne sais pas', '170 bpm', '180 bpm', '190 bpm'];
+  if (m.includes('chrono') || m.includes('temps visé') || m.includes('objectif de temps') || m.includes('performance'))
+    return ['3h30', '4h00', '1h45', '55 min'];
+  return [];
+}
+
 const RACE_LABELS: Record<string, string> = {
   marathon: 'Marathon',
   halfMarathon: 'Semi-Marathon',
@@ -134,10 +153,20 @@ function SetupPageContent() {
     }
   }
 
+  async function sendQuickReply(text: string) {
+    if (thinking) return;
+    setInput('');
+    await sendMessageText(text);
+  }
+
   async function sendMessage() {
     const text = input.trim();
     if (!text || thinking) return;
     setInput('');
+    await sendMessageText(text);
+  }
+
+  async function sendMessageText(text: string) {
 
     const next: ChatMessage[] = [...messages, { role: 'user', content: text }];
     setMessages(next);
@@ -530,14 +559,33 @@ function SetupPageContent() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="max-w-md mx-auto w-full px-4 pb-8 pt-2 flex-shrink-0">
+      <div className="max-w-md mx-auto w-full pb-8 pt-1 flex-shrink-0">
+        {/* Quick reply chips */}
+        {!thinking && (() => {
+          const lastBot = [...messages].reverse().find(m => m.role === 'model' && !m.hidden);
+          const chips = lastBot ? getQuickReplies(lastBot.content) : [];
+          if (!chips.length) return null;
+          return (
+            <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-2">
+              {chips.map((chip) => (
+                <button
+                  key={chip}
+                  onClick={() => sendQuickReply(chip)}
+                  className="flex-shrink-0 px-3.5 py-2 rounded-full bg-white border border-black/8 text-[12px] font-semibold text-[#0F0F10] transition-all active:scale-[0.95] active:bg-[#0F0F10] active:text-white"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         <button
           onClick={() => { getOrCreateUserId(); router.push('/garmin'); }}
-          className="w-full text-center text-[12px] text-[#8E8E93] pb-3"
+          className="w-full text-center text-[12px] text-[#8E8E93] pb-2 px-4"
         >
           Reprendre plus tard →
         </button>
-        <div className="flex gap-2 bg-white border border-black/8 rounded-[20px] px-4 py-2 items-end">
+        <div className="flex gap-2 bg-white border border-black/8 rounded-[20px] px-4 py-2 items-end mx-4">
           <input
             type="text"
             value={input}
