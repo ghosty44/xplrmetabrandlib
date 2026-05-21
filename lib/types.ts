@@ -37,6 +37,8 @@ export type UserProfile = {
   weeklyKm: number;
   thresholdPaceSec: number; // secondes/km au seuil
   maxHR?: number; // fréquence cardiaque maximale (bpm)
+  availableDays?: number[]; // 1=Lundi...7=Dimanche, ex: [2,4,6,7]
+  weeklySessionsPerWeek?: number;
 };
 
 export type TrainingPlan = {
