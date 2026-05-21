@@ -162,7 +162,7 @@ function makeStrengthSession(
 // ── Plan generator ─────────────────────────────────────────────────────────
 
 export function generatePlan(profile: UserProfile): TrainingPlan {
-  const { thresholdPaceSec, goalRace } = profile;
+  const { thresholdPaceSec, goalRace, goalDate } = profile;
   const sessions: Session[] = [];
 
   const days = profile.availableDays?.length === 4 ? profile.availableDays : [2, 4, 6, 7];
@@ -173,12 +173,18 @@ export function generatePlan(profile: UserProfile): TrainingPlan {
   const allDays = [1, 2, 3, 4, 5, 6, 7];
   const strengthDays = allDays.filter(d => !days.includes(d)).slice(0, strengthPerWeek);
 
-  const totalWeeks = goalRace === 'marathon' ? 16
+  // Weeks until race (capped to ideal duration for the distance, minimum 4)
+  const idealWeeks = goalRace === 'marathon' ? 16
     : goalRace === 'halfMarathon' ? 12
     : goalRace === '10k' ? 10
     : 8;
+  const msUntilRace = new Date(goalDate).getTime() - Date.now();
+  const weeksUntilRace = Math.floor(msUntilRace / (7 * 24 * 3600 * 1000));
+  const totalWeeks = Math.max(4, Math.min(idealWeeks, weeksUntilRace));
 
-  const taperWeeks = goalRace === 'marathon' ? 3
+  // Tapering proportional to plan length
+  const taperWeeks = totalWeeks <= 5 ? 1
+    : goalRace === 'marathon' ? 3
     : goalRace === 'halfMarathon' ? 2
     : 1;
   const buildWeeks = totalWeeks - taperWeeks;
