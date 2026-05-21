@@ -1,9 +1,10 @@
-import { TrainingPlan, UserProfile } from './types';
+import { TrainingPlan, UserProfile, Shoe } from './types';
 
 const PLAN_KEY = 'campus_coach_plan';
 const PROFILE_KEY = 'campus_coach_profile';
 const GARMIN_KEY = 'campus_coach_garmin_tokens';
 const USER_ID_KEY = 'campus_coach_user_id';
+const SHOES_KEY = 'campus_coach_shoes';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // ── User ID (stable key for DB row) ────────────────────────────────────────
@@ -142,6 +143,17 @@ export function markSessionCompleted(sessionId: string): void {
     s.id === sessionId ? { ...s, completed: true } : s
   );
   savePlan(plan);
+}
+
+export function saveShoes(shoes: Shoe[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(SHOES_KEY, JSON.stringify(shoes));
+}
+
+export function loadShoes(): Shoe[] {
+  if (typeof window === 'undefined') return [];
+  try { return JSON.parse(localStorage.getItem(SHOES_KEY) ?? '[]') as Shoe[]; }
+  catch { return []; }
 }
 
 export function markSessionGarminSynced(sessionId: string): void {

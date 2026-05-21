@@ -45,3 +45,10 @@ export type TrainingPlan = {
   sessions: Session[];
   createdAt: string;
 };
+
+export type Shoe = {
+  id: string;
+  name: string;
+  startDate: string; // YYYY-MM-DD
+  startKm?: number;  // km déjà sur les chaussures avant le début du suivi
+};

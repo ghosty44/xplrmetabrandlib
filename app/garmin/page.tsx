@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { loadGarminTokens, saveGarminTokens, GarminTokens } from '@/lib/store';
+import { loadGarminTokens, saveGarminTokens, GarminTokens, loadShoes, saveShoes } from '@/lib/store';
 import { formatPace } from '@/lib/zones';
+import { Shoe } from '@/lib/types';
 
 type GarminData = {
   profile: {
@@ -110,6 +111,21 @@ function activityIcon(typeKey: string): string {
   return '⚡';
 }
 
+function shoeKm(shoe: Shoe, activities: GarminData['activities']): number {
+  const start = new Date(shoe.startDate).getTime();
+  const fromActivities = (activities ?? [])
+    .filter(a => (a.activityType?.typeKey ?? '').includes('running')
+              && new Date(a.startTimeLocal).getTime() >= start)
+    .reduce((sum, a) => sum + a.distance, 0) / 1000;
+  return Math.round(fromActivities + (shoe.startKm ?? 0));
+}
+
+function shoeBarColor(km: number): string {
+  if (km >= 800) return '#EF4444';
+  if (km >= 600) return '#F59E0B';
+  return '#C8E635';
+}
+
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-[18px] bg-white border border-black/5 p-4">
@@ -134,12 +150,42 @@ export default function GarminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'activities' | 'sleep' | 'health'>('overview');
+  const [shoes, setShoes] = useState<Shoe[]>([]);
+  const [showAddShoe, setShowAddShoe] = useState(false);
+  const [newShoeName, setNewShoeName] = useState('');
+  const [newShoeDate, setNewShoeDate] = useState('');
+  const [newShoeStartKm, setNewShoeStartKm] = useState('');
 
   useEffect(() => {
     const tokens = loadGarminTokens();
     if (!tokens) { setError('not_connected'); setLoading(false); return; }
     fetchData(tokens);
   }, []);
+
+  useEffect(() => { setShoes(loadShoes()); }, []);
+
+  function addShoe() {
+    if (!newShoeName.trim() || !newShoeDate) return;
+    const shoe: Shoe = {
+      id: crypto.randomUUID(),
+      name: newShoeName.trim(),
+      startDate: newShoeDate,
+      startKm: newShoeStartKm ? Number(newShoeStartKm) : 0,
+    };
+    const next = [...shoes, shoe];
+    setShoes(next);
+    saveShoes(next);
+    setShowAddShoe(false);
+    setNewShoeName('');
+    setNewShoeDate('');
+    setNewShoeStartKm('');
+  }
+
+  function removeShoe(id: string) {
+    const next = shoes.filter(s => s.id !== id);
+    setShoes(next);
+    saveShoes(next);
+  }
 
   async function fetchData(tokens: GarminTokens) {
     setLoading(true);
@@ -274,6 +320,59 @@ export default function GarminDashboard() {
                   <StatCard label="Sommeil" value={sleep ? sleepHours(sleep.sleepTimeSeconds) : '—'} sub={sleep?.sleepScores?.overall ? `Score ${sleep.sleepScores.overall.value}` : undefined} />
                   <StatCard label="HRV nuit" value={data?.sleep?.avgOvernightHrv ? `${Math.round(data.sleep.avgOvernightHrv)}` : '—'} sub="ms" />
                 </>
+              )}
+            </div>
+
+            {/* Shoes bento */}
+            <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#F2F2F7]">
+                <div className="flex items-center gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Running%20shoe/3D/running_shoe_3d.png" alt="chaussure" width={24} height={24} className="flex-shrink-0" />
+                  <p className="text-[13px] font-semibold text-[#0F0F10]">Chaussures</p>
+                </div>
+                <button
+                  onClick={() => setShowAddShoe(true)}
+                  className="w-7 h-7 rounded-full bg-[#0F0F10] flex items-center justify-center text-white text-[16px] leading-none"
+                >+</button>
+              </div>
+              {shoes.length === 0 ? (
+                <p className="px-5 py-4 text-[13px] text-[#8E8E93]">Ajoute tes chaussures pour suivre leur kilométrage.</p>
+              ) : (
+                <div className="divide-y divide-[#F2F2F7]">
+                  {shoes.map((shoe) => {
+                    const km = shoeKm(shoe, data?.activities ?? []);
+                    const pct = Math.min(km / 1000, 1) * 100;
+                    const barColor = shoeBarColor(km);
+                    return (
+                      <div key={shoe.id} className="px-5 py-4">
+                        <div className="flex items-start gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Running%20shoe/3D/running_shoe_3d.png" alt="chaussure" width={44} height={44} className="flex-shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[14px] font-bold text-[#0F0F10] truncate">{shoe.name}</p>
+                              <button onClick={() => removeShoe(shoe.id)} className="text-[18px] text-[#8E8E93] leading-none flex-shrink-0" aria-label="Supprimer">×</button>
+                            </div>
+                            <p className="text-[11px] text-[#8E8E93] mb-2">Depuis le {new Date(shoe.startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                            <p className="text-[12px] font-semibold text-[#0F0F10] mb-1.5 tabular-nums">{km} km · {Math.max(0, 1000 - km)} km restants</p>
+                            <div className="w-full bg-[#F2F2F7] rounded-full h-2">
+                              <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: barColor }} />
+                            </div>
+                            <p className="text-[10px] text-[#8E8E93] mt-1 text-right">{Math.round(pct)}% / 1000 km</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {shoes.length > 0 && (
+                <div className="px-5 py-3 border-t border-[#F2F2F7]">
+                  <a href="https://connect.garmin.com/modern/gear" target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#8E8E93]">
+                    Voir équipement Garmin →
+                  </a>
+                </div>
               )}
             </div>
 
@@ -536,6 +635,56 @@ export default function GarminDashboard() {
           </>
         )}
       </main>
+
+      {/* Add shoe bottom-sheet */}
+      {showAddShoe && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowAddShoe(false)} />
+          <div className="relative bg-white rounded-t-[28px] px-5 pt-5 pb-10 space-y-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-[17px] font-black text-[#0F0F10]">Ajouter une paire</h2>
+              <button onClick={() => setShowAddShoe(false)} className="text-[#8E8E93] text-[24px] leading-none">×</button>
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.1em]">Nom</label>
+              <input
+                type="text"
+                placeholder="Nike Vomero 17"
+                value={newShoeName}
+                onChange={e => setNewShoeName(e.target.value)}
+                className="mt-1 w-full rounded-[14px] bg-[#F2F2F7] px-4 py-3 text-[14px] text-[#0F0F10] outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.1em]">Date de début</label>
+              <input
+                type="date"
+                value={newShoeDate}
+                onChange={e => setNewShoeDate(e.target.value)}
+                className="mt-1 w-full rounded-[14px] bg-[#F2F2F7] px-4 py-3 text-[14px] text-[#0F0F10] outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.1em]">Km déjà dessus (optionnel)</label>
+              <input
+                type="number"
+                placeholder="0"
+                value={newShoeStartKm}
+                onChange={e => setNewShoeStartKm(e.target.value)}
+                className="mt-1 w-full rounded-[14px] bg-[#F2F2F7] px-4 py-3 text-[14px] text-[#0F0F10] outline-none"
+                min="0"
+              />
+            </div>
+            <button
+              onClick={addShoe}
+              disabled={!newShoeName.trim() || !newShoeDate}
+              className="w-full rounded-[16px] bg-[#0F0F10] text-white py-3.5 text-[15px] font-bold disabled:opacity-40"
+            >
+              Valider
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
