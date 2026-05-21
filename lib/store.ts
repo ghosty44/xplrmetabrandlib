@@ -7,16 +7,15 @@ const USER_ID_KEY = 'campus_coach_user_id';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // ── User ID (stable key for DB row) ────────────────────────────────────────
-// App mono-utilisateur : on utilise un ID fixe "solo" pour la DB.
-// localStorage + cookie sont des caches ; en leur absence, "solo" permet
-// toujours de retrouver le plan en DB sans aucun identifiant côté client.
+// Chaque visiteur a un UUID unique généré à la première création de plan.
+// localStorage + cookie assurent la persistance (le cookie survit aux redéploiements).
+// Sans ID stocké → nouvel utilisateur → redirigé vers /setup.
 
-const SOLO_USER_ID = 'solo';
 const UID_COOKIE = 'cc_uid';
 const UID_MAX_AGE = 365 * 24 * 3600; // 1 an
 
-export function loadUserId(): string {
-  if (typeof window === 'undefined') return SOLO_USER_ID;
+export function loadUserId(): string | null {
+  if (typeof window === 'undefined') return null;
   const ls = localStorage.getItem(USER_ID_KEY);
   if (ls) return ls;
   const match = document.cookie.match(new RegExp(`(?:^|; )${UID_COOKIE}=([^;]+)`));
@@ -24,7 +23,17 @@ export function loadUserId(): string {
     localStorage.setItem(USER_ID_KEY, match[1]);
     return match[1];
   }
-  return SOLO_USER_ID;
+  return null;
+}
+
+export function getOrCreateUserId(): string {
+  const existing = loadUserId();
+  if (existing) return existing;
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `uid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  saveUserId(id);
+  return id;
 }
 
 export function saveUserId(id: string): void {

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { generatePlan } from '@/lib/plan';
-import { savePlan, saveProfile, saveGarminTokens, loadGarminTokens, saveUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
+import { savePlan, saveProfile, saveGarminTokens, loadGarminTokens, getOrCreateUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
 import { UserProfile, TrainingPlan } from '@/lib/types';
 import { formatPace } from '@/lib/zones';
 
@@ -151,8 +151,7 @@ function SetupPageContent() {
     if (!pendingPlan || !pendingProfile) return;
     saveProfile(pendingProfile);
     savePlan(pendingPlan);
-    const userId = loadUserId();
-    saveUserId(userId);
+    const userId = getOrCreateUserId();
     fetch('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
