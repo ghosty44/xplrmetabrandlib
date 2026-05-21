@@ -66,8 +66,14 @@ export async function POST(req: NextRequest) {
   const chat = model.startChat({ history });
   const lastMsg = messages[messages.length - 1].content;
 
-  const result = await chat.sendMessage(lastMsg);
-  const raw = result.response.text();
+  let raw: string;
+  try {
+    const result = await chat.sendMessage(lastMsg);
+    raw = result.response.text();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erreur Gemini';
+    return NextResponse.json({ message: `Désolé, une erreur est survenue : ${msg}`, profile: null, explanation: null }, { status: 200 });
+  }
 
   const profileMatch = raw.match(/<PROFILE>([\s\S]*?)<\/PROFILE>/);
   const explanationMatch = raw.match(/<EXPLANATION>([\s\S]*?)<\/EXPLANATION>/);

@@ -508,6 +508,12 @@ function SetupPageContent() {
       </div>
 
       <div className="max-w-md mx-auto w-full px-4 pb-8 pt-2 flex-shrink-0">
+        <button
+          onClick={() => { getOrCreateUserId(); router.push('/garmin'); }}
+          className="w-full text-center text-[12px] text-[#8E8E93] pb-3"
+        >
+          Reprendre plus tard →
+        </button>
         <div className="flex gap-2 bg-white border border-black/8 rounded-[20px] px-4 py-2 items-end">
           <input
             type="text"
