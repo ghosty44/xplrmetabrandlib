@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { loadPlan, savePlan, loadUserId, loadGarminTokens } from '@/lib/store';
 import { TrainingPlan, Session } from '@/lib/types';
-import { getZoneConfig } from '@/lib/zones';
+import { getZoneConfig, getZoneHRRange } from '@/lib/zones';
 import { Zone } from '@/lib/types';
 import { getPlanStartMonday, getSessionDate } from '@/lib/dates';
 
@@ -46,7 +46,28 @@ function formatGoalDate(goalDate: string): string {
   });
 }
 
-function SessionCard({ session, date }: { session: Session; date: Date }) {
+const ZONE_INTENSITY: Record<Zone, number> = {
+  Recup: 0.2, EF: 0.35, Neutre: 0.45, SSeuilVO2: 0.7, Seuil: 0.8, VO2max: 1.0,
+};
+
+function sessionTargetHR(session: Session, maxHR?: number): string | null {
+  if (session.type === 'strength') return null;
+  let best: Zone | null = null;
+  let bestIntensity = -1;
+  for (const step of session.steps) {
+    if (!step.zone || step.isRecovery) continue;
+    const intensity = ZONE_INTENSITY[step.zone] ?? 0;
+    if (intensity > bestIntensity) { bestIntensity = intensity; best = step.zone; }
+  }
+  if (!best) return null;
+  const range = getZoneHRRange(best);
+  if (maxHR) {
+    return `${Math.round(maxHR * range.min / 100)}–${Math.round(maxHR * range.max / 100)} bpm`;
+  }
+  return `${range.min}–${range.max}% FC`;
+}
+
+function SessionCard({ session, date, maxHR }: { session: Session; date: Date; maxHR?: number }) {
   const totalDuration = session.totalMin;
   const isToday = new Date().toDateString() === date.toDateString();
 
@@ -92,7 +113,12 @@ function SessionCard({ session, date }: { session: Session; date: Date }) {
           </div>
         </div>
 
-        <p className="text-[11px] text-[#8E8E93] mb-2.5">{totalDuration} min</p>
+        <div className="flex items-center gap-2 mb-2.5">
+          <p className="text-[11px] text-[#8E8E93]">{totalDuration} min</p>
+          {sessionTargetHR(session, maxHR) && (
+            <p className="text-[11px] text-[#8E8E93]">· ♥ {sessionTargetHR(session, maxHR)}</p>
+          )}
+        </div>
 
         {session.type === 'strength' ? (
           <div className="flex flex-wrap gap-1">
@@ -365,7 +391,7 @@ export default function DashboardPage() {
             {[1, 2, 3, 4, 5, 6, 7].map((day) => {
               const session = sessionByDay[day];
               const date = getSessionDate(plan.createdAt, currentWeek, day);
-              if (session) return <SessionCard key={day} session={session} date={date} />;
+              if (session) return <SessionCard key={day} session={session} date={date} maxHR={plan.profile.maxHR} />;
               return <RestCard key={day} day={day} date={date} />;
             })}
           </div>

@@ -154,6 +154,23 @@ export default function SessionPage() {
             </div>
             <p className="text-[11px] text-[#8E8E93]">
               {DAY_LABELS[session.day]} · Sem. {session.week} · {totalMin} min
+              {!isStrength && (() => {
+                const INTENSITY: Record<string, number> = { Recup: 0.2, EF: 0.35, Neutre: 0.45, SSeuilVO2: 0.7, Seuil: 0.8, VO2max: 1.0 };
+                let best: import('@/lib/types').Zone | null = null;
+                let bestI = -1;
+                for (const s of session.steps) {
+                  if (!s.zone || s.isRecovery) continue;
+                  const i = INTENSITY[s.zone] ?? 0;
+                  if (i > bestI) { bestI = i; best = s.zone; }
+                }
+                if (!best) return null;
+                const r = getZoneHRRange(best);
+                const mhr = plan?.profile.maxHR;
+                const label = mhr
+                  ? `${Math.round(mhr * r.min / 100)}–${Math.round(mhr * r.max / 100)} bpm`
+                  : `${r.min}–${r.max}% FC`;
+                return ` · ♥ ${label}`;
+              })()}
             </p>
           </div>
         </div>
