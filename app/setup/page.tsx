@@ -9,7 +9,7 @@ import { UserProfile, TrainingPlan } from '@/lib/types';
 import { formatPace } from '@/lib/zones';
 
 type Phase = 'chat' | 'preview' | 'garmin';
-type ChatMessage = { role: 'user' | 'model'; content: string };
+type ChatMessage = { role: 'user' | 'model'; content: string; hidden?: boolean };
 
 const RACE_LABELS: Record<string, string> = {
   marathon: 'Marathon',
@@ -100,7 +100,12 @@ function SetupPageContent() {
       });
       const data = await res.json() as { message?: string; error?: string };
       const msg = data.message || data.error || 'Bonjour ! Je suis Campus Coach. Quelle course prépares-tu ?';
-      setMessages([{ role: 'model', content: msg }]);
+      // Keep the initial 'Bonjour' in history (Gemini requires history to start with 'user')
+      // but mark it hidden so it doesn't render in the UI
+      setMessages([
+        { role: 'user', content: 'Bonjour', hidden: true },
+        { role: 'model', content: msg },
+      ]);
     } catch {
       setMessages([{ role: 'model', content: 'Bonjour ! Je suis Campus Coach. Quelle course prépares-tu ?' }]);
     } finally {
@@ -477,7 +482,7 @@ function SetupPageContent() {
       </div>
 
       <div className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 py-2 space-y-3">
-        {messages.map((msg, i) => (
+        {messages.filter((m) => !m.hidden).map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
               className={`max-w-[82%] px-4 py-3 rounded-[18px] text-[14px] leading-relaxed ${
