@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 import { generatePlan } from '@/lib/plan';
-import { savePlan, saveProfile, saveGarminTokens, loadGarminTokens, getOrCreateUserId, loadUserId, loadPlan, GarminTokens } from '@/lib/store';
-import { UserProfile, TrainingPlan } from '@/lib/types';
+import { savePlan, saveProfile, saveGarminTokens, loadGarminTokens, getOrCreateUserId, loadUserId, loadPlan, loadGarminUserId, saveGarminUserId, saveShoes, GarminTokens } from '@/lib/store';
+import { UserProfile, TrainingPlan, Shoe } from '@/lib/types';
 import { formatPace } from '@/lib/zones';
 
-type Phase = 'chat' | 'preview' | 'garmin';
+type Phase = 'garmin' | 'loading' | 'chat' | 'preview';
 type ChatMessage = { role: 'user' | 'model'; content: string; hidden?: boolean };
 
 const CHAT_KEY = 'runai_chat_messages';
@@ -29,7 +28,6 @@ function getQuickReplies(lastBotMsg: string, allMessages: ChatMessage[]): string
     .filter(msg => msg.role === 'user' && !msg.hidden)
     .map(msg => msg.content.toLowerCase());
 
-  // Detect what the user has already answered
   const hasDistance = userMsgs.some(u =>
     u.includes('marathon') || u.includes('semi') || u.includes('10 km') || u.includes('5 km') || u.includes('10k') || u.includes('5k'));
   const chosenRace = userMsgs.find(u =>
@@ -39,7 +37,6 @@ function getQuickReplies(lastBotMsg: string, allMessages: ChatMessage[]): string
   const is10k = !!chosenRace && (chosenRace.includes('10 km') || chosenRace.includes('10k'));
   const is5k = !!chosenRace && (chosenRace.includes('5 km') || chosenRace.includes('5k'));
 
-  // Priority order: HR → Injury → Strength → Days → Volume → Date/chrono → Distance
   if (m.includes('fc max') || m.includes('fréquence cardiaque maximale') || m.includes('fréquence max') || m.includes('fcmax')) {
     return ['Je ne sais pas', '170 bpm', '180 bpm', '190 bpm'];
   }
@@ -49,7 +46,7 @@ function getQuickReplies(lastBotMsg: string, allMessages: ChatMessage[]): string
   if (m.includes('renforcement') || m.includes('musculaire') || m.includes('gainage') || m.includes('séances de renforcement')) {
     return ['0 séance', '1 séance/semaine', '2 séances/semaine'];
   }
-  if (m.includes('jours') || m.includes('disponible') || m.includes('semaine') && m.includes('courir')) {
+  if (m.includes('jours') || m.includes('disponible') || (m.includes('semaine') && m.includes('courir'))) {
     return ['Mar · Jeu · Sam · Dim', 'Lun · Mer · Ven · Sam', 'Mar · Jeu · Sam', 'Lun · Mer · Sam'];
   }
   if (m.includes('km/semaine') || m.includes('kilomètres par semaine') || m.includes('volume') || m.includes('actuellement')) {
@@ -159,7 +156,10 @@ function PlanPreview({ plan, onConfirm, onBack }: { plan: TrainingPlan; onConfir
   );
 }
 
-function GarminStep({ onSkip, onConnect }: { onSkip: () => void; onConnect: (tokens: GarminTokens) => void }) {
+function GarminConnectStep({ onConnected, onSkip }: {
+  onConnected: (garminUserId: string, tokens: GarminTokens) => void;
+  onSkip: () => void;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -175,9 +175,9 @@ function GarminStep({ onSkip, onConnect }: { onSkip: () => void; onConnect: (tok
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json() as { success: boolean; tokens?: GarminTokens; error?: string };
+      const data = await res.json() as { success: boolean; tokens?: GarminTokens; garminUserId?: string; error?: string };
       if (data.success && data.tokens) {
-        onConnect(data.tokens);
+        onConnected(data.garminUserId ?? '', data.tokens);
       } else {
         setError(data.error ?? 'Erreur de connexion');
       }
@@ -195,9 +195,9 @@ function GarminStep({ onSkip, onConnect }: { onSkip: () => void; onConnect: (tok
           <div className="w-16 h-16 rounded-[20px] bg-[#C8E635]/20 flex items-center justify-center mx-auto mb-4">
             <span className="text-[#C8E635] font-black text-2xl">G</span>
           </div>
-          <p className="text-[20px] font-black text-white mb-2">Connecte Garmin</p>
+          <p className="text-[20px] font-black text-white mb-2">Connecte ton compte Garmin</p>
           <p className="text-[13px] text-white/50 leading-relaxed">
-            Synchronise tes séances directement sur ta montre Garmin.
+            Tes données et ton plan sont sauvegardés sur ton compte. Reconnecte-toi depuis n&apos;importe quel appareil.
           </p>
         </div>
 
@@ -235,23 +235,23 @@ function GarminStep({ onSkip, onConnect }: { onSkip: () => void; onConnect: (tok
               />
             </div>
             <p className="text-[11px] text-[#8E8E93]">
-              Vos identifiants ne sont jamais stockés.
+              Tes identifiants ne sont jamais stockés — seuls les tokens OAuth sont conservés localement.
             </p>
             <button
               type="submit"
               disabled={loading}
               className="w-full py-3.5 rounded-[14px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:opacity-50 transition-all active:scale-[0.98]"
             >
-              {loading ? 'Connexion...' : 'Se connecter à Garmin'}
+              {loading ? 'Connexion en cours...' : 'Se connecter à Garmin'}
             </button>
           </form>
         </div>
 
         <button
           onClick={onSkip}
-          className="w-full py-3 text-[13px] font-semibold text-[#8E8E93] transition-all active:scale-[0.98]"
+          className="w-full py-3 text-[12px] font-medium text-[#8E8E93] transition-all active:scale-[0.98]"
         >
-          Passer cette étape
+          Continuer sans Garmin
         </button>
       </div>
     </div>
@@ -263,7 +263,7 @@ function ChatContent() {
   const searchParams = useSearchParams();
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const [phase, setPhase] = useState<Phase>('chat');
+  const [phase, setPhase] = useState<Phase>('garmin');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -271,12 +271,52 @@ function ChatContent() {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    const force = searchParams.get('force');
-    const existingPlan = loadPlan();
-    if (existingPlan && !force) {
-      router.replace('/');
+    const force = searchParams.get('force') === '1';
+
+    // If already have tokens or garminUserId → skip garmin step
+    const tokens = loadGarminTokens();
+    const garminId = loadGarminUserId();
+    const alreadyAuthed = !!tokens || !!garminId;
+
+    if (alreadyAuthed && !force) {
+      // Check if a plan already exists in memory or DB
+      const localPlan = loadPlan();
+      if (localPlan) {
+        router.replace('/');
+        return;
+      }
+      // Try fetching from DB
+      const userId = loadUserId();
+      if (userId) {
+        setPhase('loading');
+        fetch(`/api/profile?userId=${encodeURIComponent(userId)}`)
+          .then(r => r.json())
+          .then((d: { plan?: TrainingPlan | null; shoes?: Shoe[] }) => {
+            if (d.plan) {
+              savePlan(d.plan);
+              if (d.shoes?.length) saveShoes(d.shoes);
+              router.replace('/');
+            } else {
+              startChat(force);
+            }
+          })
+          .catch(() => startChat(force));
+        return;
+      }
+    }
+
+    if (alreadyAuthed && force) {
+      startChat(force);
       return;
     }
+
+    // Not authed → show garmin step
+    setPhase('garmin');
+    setInitialized(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function startChat(force: boolean) {
     const saved = loadChatMessages();
     if (saved.length > 0 && !force) {
       setMessages(saved);
@@ -289,8 +329,34 @@ function ChatContent() {
       setMessages([welcome]);
       saveChatMessages([welcome]);
     }
+    setPhase('chat');
     setInitialized(true);
-  }, [router, searchParams]);
+  }
+
+  const handleGarminConnected = async (garminUserId: string, tokens: GarminTokens) => {
+    saveGarminTokens(tokens);
+    if (garminUserId) saveGarminUserId(garminUserId);
+
+    const userId = garminUserId || loadUserId();
+    if (userId) {
+      setPhase('loading');
+      try {
+        const res = await fetch(`/api/profile?userId=${encodeURIComponent(userId)}`);
+        const d = await res.json() as { plan?: TrainingPlan | null; shoes?: Shoe[] };
+        if (d.plan) {
+          savePlan(d.plan);
+          if (d.shoes?.length) saveShoes(d.shoes);
+          router.replace('/');
+          return;
+        }
+      } catch { /* non-fatal */ }
+    }
+    startChat(false);
+  };
+
+  const handleSkipGarmin = () => {
+    startChat(false);
+  };
 
   useEffect(() => {
     if (bottomRef.current) {
@@ -314,26 +380,29 @@ function ChatContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages }),
       });
-      const data = await res.json() as { message?: string; plan?: TrainingPlan; done?: boolean; error?: string };
+      const data = await res.json() as { message?: string; profile?: UserProfile; error?: string };
 
-      if (data.plan) {
+      if (data.profile) {
+        // API returned a complete profile → generate the full training plan
+        const plan = generatePlan(data.profile);
         const botMsg: ChatMessage = { role: 'model', content: data.message ?? 'Voici ton plan !' };
         const finalMessages = [...newMessages, botMsg];
         setMessages(finalMessages);
         saveChatMessages(finalMessages);
-        setGeneratedPlan(data.plan);
+        setGeneratedPlan(plan);
         setPhase('preview');
       } else if (data.message) {
         const botMsg: ChatMessage = { role: 'model', content: data.message };
         const finalMessages = [...newMessages, botMsg];
         setMessages(finalMessages);
         saveChatMessages(finalMessages);
+      } else {
+        throw new Error('empty response');
       }
     } catch {
       const errMsg: ChatMessage = { role: 'model', content: 'Désolé, une erreur est survenue. Réessaie !' };
-      const finalMessages = [...newMessages, errMsg];
-      setMessages(finalMessages);
-      saveChatMessages(finalMessages);
+      setMessages([...newMessages, errMsg]);
+      saveChatMessages([...newMessages, errMsg]);
     } finally {
       setThinking(false);
     }
@@ -341,47 +410,45 @@ function ChatContent() {
 
   const handleConfirmPlan = () => {
     if (!generatedPlan) return;
-    const profile = generatedPlan.profile;
-    saveProfile(profile);
+    saveProfile(generatedPlan.profile);
     savePlan(generatedPlan);
-    const userId = getOrCreateUserId();
+    const userId = loadUserId() ?? getOrCreateUserId();
     fetch('/api/profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, plan: generatedPlan }),
     }).catch(() => {});
     clearChatMessages();
-    setPhase('garmin');
-  };
-
-  const handleGarminConnect = (tokens: GarminTokens) => {
-    saveGarminTokens(tokens);
     router.push('/');
   };
 
-  if (!initialized) {
+  // ── Garmin phase ──────────────────────────────────────────────────────────
+  if (phase === 'garmin') {
     return (
-      <div className="min-h-screen bg-[#F2F2F7] flex items-center justify-center">
+      <GarminConnectStep
+        onConnected={handleGarminConnected}
+        onSkip={handleSkipGarmin}
+      />
+    );
+  }
+
+  // ── Loading phase ─────────────────────────────────────────────────────────
+  if (phase === 'loading' || !initialized) {
+    return (
+      <div className="min-h-screen bg-[#F2F2F7] flex flex-col items-center justify-center gap-3">
         <div className="w-7 h-7 border-2 border-[#8E8E93]/30 border-t-[#0F0F10] rounded-full animate-spin" />
+        <p className="text-[12px] text-[#8E8E93]">Chargement de ton profil…</p>
       </div>
     );
   }
 
+  // ── Preview phase ─────────────────────────────────────────────────────────
   if (phase === 'preview' && generatedPlan) {
     return (
       <PlanPreview
         plan={generatedPlan}
         onConfirm={handleConfirmPlan}
         onBack={() => setPhase('chat')}
-      />
-    );
-  }
-
-  if (phase === 'garmin') {
-    return (
-      <GarminStep
-        onSkip={() => router.push('/')}
-        onConnect={handleGarminConnect}
       />
     );
   }
