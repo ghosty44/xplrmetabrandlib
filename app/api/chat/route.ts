@@ -48,60 +48,72 @@ Le texte visible lors de la génération du profil : UNE phrase d'accroche court
 Commence par : une brève présentation de toi-même (2 phrases max), puis demande l'objectif précis.`;
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ message: '⚠️ Clé API Gemini manquante (GEMINI_API_KEY). Configure-la dans les variables d\'environnement Vercel.', profile: null, explanation: null }, { status: 200 });
-  }
-
-  const { messages } = await req.json() as {
-    messages: Array<{ role: 'user' | 'model'; content: string }>;
-  };
-
-  if (!messages?.length) {
-    return NextResponse.json({ error: 'messages requis' }, { status: 400 });
-  }
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
-    systemInstruction: SYSTEM_PROMPT,
-  });
-
-  const history = messages.slice(0, -1).map((m) => ({
-    role: m.role,
-    parts: [{ text: m.content }],
-  }));
-
-  const chat = model.startChat({ history });
-  const lastMsg = messages[messages.length - 1].content;
-
-  let raw: string;
   try {
-    const result = await chat.sendMessage(lastMsg);
-    raw = result.response.text();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Erreur Gemini';
-    return NextResponse.json({ message: `Désolé, une erreur est survenue : ${msg}`, profile: null, explanation: null }, { status: 200 });
-  }
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({
+        message: '⚠️ Clé API Gemini manquante. Configure GEMINI_API_KEY dans les variables Vercel.',
+        profile: null, explanation: null,
+      });
+    }
 
-  const profileMatch = raw.match(/<PROFILE>([\s\S]*?)<\/PROFILE>/);
-  const explanationMatch = raw.match(/<EXPLANATION>([\s\S]*?)<\/EXPLANATION>/);
-
-  let profile = null;
-  let explanation: string | null = null;
-  const message = raw
-    .replace(/<PROFILE>[\s\S]*?<\/PROFILE>/g, '')
-    .replace(/<EXPLANATION>[\s\S]*?<\/EXPLANATION>/g, '')
-    .trim();
-
-  if (profileMatch) {
+    let body: { messages?: Array<{ role: 'user' | 'model'; content: string }> };
     try {
-      profile = JSON.parse(profileMatch[1].trim());
-    } catch { /* invalid JSON, ignore */ }
-  }
-  if (explanationMatch) {
-    explanation = explanationMatch[1].trim();
-  }
+      body = await req.json() as typeof body;
+    } catch {
+      return NextResponse.json({ message: '⚠️ Corps de requête invalide', profile: null, explanation: null });
+    }
 
-  return NextResponse.json({ message, profile, explanation });
+    const { messages } = body;
+    if (!messages?.length) {
+      return NextResponse.json({ message: '⚠️ messages requis', profile: null, explanation: null });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      systemInstruction: SYSTEM_PROMPT,
+    });
+
+    const history = messages.slice(0, -1).map((m) => ({
+      role: m.role,
+      parts: [{ text: m.content }],
+    }));
+
+    const chat = model.startChat({ history });
+    const lastMsg = messages[messages.length - 1].content;
+
+    let raw: string;
+    try {
+      const result = await chat.sendMessage(lastMsg);
+      raw = result.response.text();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur Gemini';
+      return NextResponse.json({ message: `⚠️ Gemini: ${msg}`, profile: null, explanation: null });
+    }
+
+    const profileMatch = raw.match(/<PROFILE>([\s\S]*?)<\/PROFILE>/);
+    const explanationMatch = raw.match(/<EXPLANATION>([\s\S]*?)<\/EXPLANATION>/);
+
+    let profile = null;
+    let explanation: string | null = null;
+    const message = raw
+      .replace(/<PROFILE>[\s\S]*?<\/PROFILE>/g, '')
+      .replace(/<EXPLANATION>[\s\S]*?<\/EXPLANATION>/g, '')
+      .trim();
+
+    if (profileMatch) {
+      try { profile = JSON.parse(profileMatch[1].trim()); } catch { /* invalid JSON */ }
+    }
+    if (explanationMatch) {
+      explanation = explanationMatch[1].trim();
+    }
+
+    return NextResponse.json({ message, profile, explanation });
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+    console.error('[/api/chat] unhandled error:', msg);
+    return NextResponse.json({ message: `⚠️ Erreur interne: ${msg}`, profile: null, explanation: null });
+  }
 }
