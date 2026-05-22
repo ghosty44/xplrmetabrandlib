@@ -24,6 +24,15 @@ const NAV = [
     ),
   },
   {
+    href: '/assistant',
+    label: 'Coach',
+    icon: (active: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke={active ? 'none' : 'currentColor'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+    ),
+  },
+  {
     href: '/gallery',
     label: 'Galerie',
     icon: (active: boolean) => (
@@ -56,7 +65,7 @@ const NAV = [
   },
 ];
 
-const HIDDEN_ROUTES = ['/setup', '/session/'];
+const HIDDEN_ROUTES = ['/setup', '/session/', '/plan-print'];
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -66,7 +75,7 @@ export default function BottomNav() {
   return (
     <div className="fixed bottom-5 inset-x-0 flex justify-center z-50 pointer-events-none">
       <nav
-        className="pointer-events-auto flex items-center gap-1 px-2.5 py-2.5 rounded-[28px]"
+        className="pointer-events-auto flex items-center gap-0.5 px-2 py-2.5 rounded-[28px]"
         style={{
           background: 'rgba(255, 255, 255, 0.28)',
           backdropFilter: 'blur(40px) saturate(200%) brightness(1.08)',
@@ -82,7 +91,7 @@ export default function BottomNav() {
             <Link
               key={href}
               href={href}
-              className="relative flex flex-col items-center gap-0.5 px-5 py-2 rounded-[18px] transition-all active:scale-90"
+              className="relative flex flex-col items-center gap-0.5 px-4 py-2 rounded-[18px] transition-all active:scale-90"
               style={
                 active
                   ? {
