@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
     const planContext = plan ? buildPlanContext(plan) : 'Aucun plan disponible.';
     const garminContext = garminSummary ?? 'Aucune donnée Garmin disponible.';
 
+    const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const systemPrompt = `Tu es "Coach RunAI", assistant personnel de course à pied. Tu parles exclusivement en français, de façon concise et bienveillante. Tu réponds en 3-5 phrases maximum sauf si l'utilisateur demande une explication détaillée.
+
+Date du jour : ${today}
 
 Tu as accès aux données complètes de l'utilisateur :
 
