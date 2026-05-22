@@ -380,10 +380,17 @@ function ChatContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages }),
       });
-      const data = await res.json() as { message?: string; profile?: UserProfile; error?: string };
+
+      let data: { message?: string; profile?: UserProfile; error?: string };
+      try {
+        data = await res.json() as typeof data;
+      } catch {
+        throw new Error(`Erreur serveur (HTTP ${res.status}) — vérifie les variables d'environnement Vercel`);
+      }
+
+      if (data.error) throw new Error(data.error);
 
       if (data.profile) {
-        // API returned a complete profile → generate the full training plan
         const plan = generatePlan(data.profile);
         const botMsg: ChatMessage = { role: 'model', content: data.message ?? 'Voici ton plan !' };
         const finalMessages = [...newMessages, botMsg];
@@ -397,10 +404,11 @@ function ChatContent() {
         setMessages(finalMessages);
         saveChatMessages(finalMessages);
       } else {
-        throw new Error('empty response');
+        throw new Error('Réponse vide du serveur');
       }
-    } catch {
-      const errMsg: ChatMessage = { role: 'model', content: 'Désolé, une erreur est survenue. Réessaie !' };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      const errMsg: ChatMessage = { role: 'model', content: `⚠️ ${msg}` };
       setMessages([...newMessages, errMsg]);
       saveChatMessages([...newMessages, errMsg]);
     } finally {

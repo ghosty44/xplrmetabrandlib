@@ -50,7 +50,7 @@ Commence par : une brève présentation de toi-même (2 phrases max), puis deman
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY non configurée' }, { status: 500 });
+    return NextResponse.json({ message: '⚠️ Clé API Gemini manquante (GEMINI_API_KEY). Configure-la dans les variables d\'environnement Vercel.', profile: null, explanation: null }, { status: 200 });
   }
 
   const { messages } = await req.json() as {
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.0-flash',
     systemInstruction: SYSTEM_PROMPT,
   });
 
