@@ -85,6 +85,7 @@ type GarminData = {
     }>;
   } | null;
   shoes?: GarminGearItem[];
+  _healthErrors?: string[];
 };
 
 function fmtDuration(seconds: number): string {
@@ -158,6 +159,14 @@ function shoeBarColor(km: number): string {
   if (km >= 800) return '#EF4444';
   if (km >= 600) return '#F59E0B';
   return '#C8E635';
+}
+
+function friendlyError(errors: string[]): string {
+  const joined = errors.join(' ');
+  if (joined.includes('403')) return 'Accès refusé par Garmin (scope OAuth insuffisant).';
+  if (joined.includes('404')) return 'Aucune donnée disponible pour la date demandée.';
+  if (joined.includes('401')) return 'Session Garmin expirée — reconnectez-vous dans les Réglages.';
+  return 'Données non synchronisées. Vérifiez que votre montre a bien synchronisé.';
 }
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -394,7 +403,7 @@ export default function GarminDashboard() {
               {loading ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />) : (
                 <>
                   <StatCard label="Pas aujourd'hui" value={data?.steps != null ? data.steps.toLocaleString('fr-FR') : '—'} sub="obj. 10 000" />
-                  <StatCard label="FC repos" value={hr?.restingHeartRate ? `${hr.restingHeartRate}` : '—'} sub="bpm" />
+                  <StatCard label="FC repos" value={hr?.restingHeartRate != null ? `${hr.restingHeartRate}` : '—'} sub="bpm" />
                   <StatCard label="Sommeil" value={sleep ? sleepHours(sleep.sleepTimeSeconds) : '—'} sub={sleep?.sleepScores?.overall ? `Score ${sleep.sleepScores.overall.value}` : undefined} />
                   <StatCard label="HRV nuit" value={data?.sleep?.avgOvernightHrv ? `${Math.round(data.sleep.avgOvernightHrv)}` : '—'} sub="ms" />
                 </>
@@ -634,8 +643,8 @@ export default function GarminDashboard() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <StatCard label="FC repos" value={sleep.restingHeartRate ? `${sleep.restingHeartRate}` : '—'} sub="bpm" />
-                  <StatCard label="Stress sommeil" value={sleep.avgSleepStress ? String(Math.round(sleep.avgSleepStress)) : '—'} sub="score moyen" />
+                  <StatCard label="FC repos" value={sleep.restingHeartRate != null ? `${sleep.restingHeartRate}` : '—'} sub="bpm" />
+                  <StatCard label="Stress sommeil" value={sleep.avgSleepStress != null ? String(Math.round(sleep.avgSleepStress)) : '—'} sub="score moyen" />
                   {data?.sleep?.bodyBatteryChange != null && (
                     <StatCard label="Batterie" value={`${data.sleep.bodyBatteryChange > 0 ? '+' : ''}${data.sleep.bodyBatteryChange}`} sub="variation" />
                   )}
@@ -676,12 +685,15 @@ export default function GarminDashboard() {
                 {/* Heart rate */}
                 <div className="rounded-[24px] bg-white border border-black/5 p-5">
                   <p className="text-[13px] font-semibold text-[#0F0F10] mb-3">Fréquence cardiaque</p>
+                  {!hr && data?._healthErrors && (
+                    <p className="text-[11px] text-[#8E8E93] mb-3 italic">{friendlyError(data._healthErrors)}</p>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
-                    <StatCard label="FC repos" value={hr?.restingHeartRate ? `${hr.restingHeartRate}` : '—'} sub="bpm" />
-                    <StatCard label="FC min" value={hr?.minHeartRate ? `${hr.minHeartRate}` : '—'} sub="bpm" />
-                    <StatCard label="FC max" value={hr?.maxHeartRate ? `${hr.maxHeartRate}` : '—'} sub="bpm" />
+                    <StatCard label="FC repos" value={hr?.restingHeartRate != null ? `${hr.restingHeartRate}` : '—'} sub="bpm" />
+                    <StatCard label="FC min"   value={hr?.minHeartRate       != null ? `${hr.minHeartRate}`       : '—'} sub="bpm" />
+                    <StatCard label="FC max"   value={hr?.maxHeartRate       != null ? `${hr.maxHeartRate}`       : '—'} sub="bpm" />
                   </div>
-                  {hr?.lastSevenDaysAvgRestingHeartRate && (
+                  {hr?.lastSevenDaysAvgRestingHeartRate != null && (
                     <p className="text-[11px] text-[#8E8E93] mt-3">Moy. 7 j : {hr.lastSevenDaysAvgRestingHeartRate} bpm</p>
                   )}
                 </div>
