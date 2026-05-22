@@ -8,10 +8,6 @@ const SHOES_KEY = 'runai_shoes';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // ── User ID (stable key for DB row) ────────────────────────────────────────
-// Chaque visiteur a un UUID unique généré à la première création de plan.
-// localStorage + cookie assurent la persistance (le cookie survit aux redéploiements).
-// Sans ID stocké → nouvel utilisateur → redirigé vers /setup.
-
 const UID_COOKIE = 'runai_uid';
 const UID_MAX_AGE = 365 * 24 * 3600; // 1 an
 
@@ -69,7 +65,6 @@ export function loadGarminTokens(): GarminTokens | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as StoredGarmin | GarminTokens;
-    // Handle old format (tokens stored directly without savedAt)
     if (!('savedAt' in parsed)) {
       clearGarminTokens();
       return null;
@@ -154,6 +149,16 @@ export function loadShoes(): Shoe[] {
   if (typeof window === 'undefined') return [];
   try { return JSON.parse(localStorage.getItem(SHOES_KEY) ?? '[]') as Shoe[]; }
   catch { return []; }
+}
+
+export function markSessionSkipped(sessionId: string, skipped: boolean): void {
+  if (typeof window === 'undefined') return;
+  const plan = loadPlan();
+  if (!plan) return;
+  plan.sessions = plan.sessions.map((s) =>
+    s.id === sessionId ? { ...s, skipped, completed: skipped ? false : s.completed } : s
+  );
+  savePlan(plan);
 }
 
 export function markSessionGarminSynced(sessionId: string): void {

@@ -29,6 +29,7 @@ export type Session = {
   week: number;
   day: number; // 1=Lundi...7=Dimanche
   completed: boolean;
+  skipped?: boolean;
   garminSynced?: boolean;
   gpxCoords?: GpxPoint[];
   gpxDistanceKm?: number;
