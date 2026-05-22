@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loadPlan, savePlan, loadUserId, loadGarminTokens } from '@/lib/store';
+import { loadPlan, savePlan, loadUserId, loadGarminTokens, loadGarminUserId } from '@/lib/store';
 import { TrainingPlan, Session } from '@/lib/types';
 import { getZoneConfig, getZoneHRRange } from '@/lib/zones';
 import { Zone } from '@/lib/types';
@@ -197,6 +197,7 @@ export default function DashboardPage() {
   const [currentWeek, setCurrentWeek] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [garminConnected, setGarminConnected] = useState(false);
+  const [garminRequired, setGarminRequired] = useState(false);
   const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
   const [notifState, setNotifState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
@@ -249,10 +250,15 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    const tokens = loadGarminTokens();
+    const garminId = loadGarminUserId();
+    if (!tokens && !garminId) {
+      setGarminRequired(true);
+    }
     const local = loadPlan();
     if (local) {
       setPlan(local);
-      setGarminConnected(!!loadGarminTokens());
+      setGarminConnected(!!tokens);
       setLoaded(true);
     } else {
       const userId = loadUserId();
@@ -283,6 +289,29 @@ export default function DashboardPage() {
         .catch(() => {});
     }
   }, [router]);
+
+  if (garminRequired && !loaded) {
+    return (
+      <div className="min-h-screen bg-[#F2F2F7] flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-16 h-16 rounded-[20px] bg-[#C8E635]/20 flex items-center justify-center mb-5">
+          <span className="text-[#0F0F10] font-black text-2xl">G</span>
+        </div>
+        <h1 className="text-[22px] font-black text-[#0F0F10] mb-2">Connecte Garmin</h1>
+        <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-6 max-w-xs">
+          RunAI nécessite un compte Garmin Connect pour synchroniser tes données et sauvegarder ta progression.
+        </p>
+        <Link
+          href="/settings"
+          className="px-6 py-3.5 rounded-[16px] bg-[#0F0F10] text-white text-[14px] font-semibold transition-all active:scale-[0.97]"
+        >
+          Connecter mon compte Garmin
+        </Link>
+        <Link href="/setup" className="mt-3 text-[12px] text-[#8E8E93] underline underline-offset-2">
+          Créer un plan sans Garmin
+        </Link>
+      </div>
+    );
+  }
 
   if (!loaded || !plan) {
     return (

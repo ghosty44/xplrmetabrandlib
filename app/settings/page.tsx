@@ -2,8 +2,9 @@
 
 import { useEffect, useState, FormEvent, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveGarminTokens, loadGarminTokens, clearGarminTokens, garminTokensExpiresAt, GarminTokens, loadPlan, savePlan } from '@/lib/store';
+import { saveGarminTokens, loadGarminTokens, clearGarminTokens, garminTokensExpiresAt, GarminTokens, loadPlan, savePlan, saveShoes, saveGarminUserId } from '@/lib/store';
 import { generatePlan } from '@/lib/plan';
+import { Shoe } from '@/lib/types';
 
 type Tab = 'garmin' | 'vma' | 'plan';
 
@@ -61,11 +62,21 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json() as { success: boolean; tokens?: GarminTokens; error?: string };
+      const data = await res.json() as { success: boolean; tokens?: GarminTokens; garminUserId?: string; error?: string };
       if (data.success && data.tokens) {
         saveGarminTokens(data.tokens);
         setTokens(data.tokens);
         setExpiresAt(garminTokensExpiresAt());
+        // Save stable Garmin ID and reload persisted data from DB
+        if (data.garminUserId) {
+          saveGarminUserId(data.garminUserId as string);
+          try {
+            const dbRes = await fetch(`/api/profile?userId=${encodeURIComponent(data.garminUserId as string)}`);
+            const dbData = await dbRes.json() as { plan?: import('@/lib/types').TrainingPlan | null; shoes?: Shoe[] };
+            if (dbData.plan) savePlan(dbData.plan);
+            if (dbData.shoes?.length) saveShoes(dbData.shoes);
+          } catch { /* non-fatal */ }
+        }
         setGarminSuccess(true);
         setEmail('');
         setPassword('');

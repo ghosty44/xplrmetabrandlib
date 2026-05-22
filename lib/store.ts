@@ -5,14 +5,34 @@ const PROFILE_KEY = 'runai_profile';
 const GARMIN_KEY = 'runai_garmin_tokens';
 const USER_ID_KEY = 'runai_user_id';
 const SHOES_KEY = 'runai_shoes';
+const GARMIN_USER_ID_KEY = 'runai_garmin_user_id';
 const GARMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // ── User ID (stable key for DB row) ────────────────────────────────────────
 const UID_COOKIE = 'runai_uid';
 const UID_MAX_AGE = 365 * 24 * 3600; // 1 an
 
+export function saveGarminUserId(id: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(GARMIN_USER_ID_KEY, id);
+}
+
+export function loadGarminUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(GARMIN_USER_ID_KEY);
+}
+
+export function clearGarminUserId(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(GARMIN_USER_ID_KEY);
+}
+
 export function loadUserId(): string | null {
   if (typeof window === 'undefined') return null;
+  // Prefer Garmin displayName as stable, cross-device identity
+  const garminId = localStorage.getItem(GARMIN_USER_ID_KEY);
+  if (garminId) return garminId;
+  // Fallback: legacy random UUID
   const ls = localStorage.getItem(USER_ID_KEY);
   if (ls) return ls;
   const match = document.cookie.match(new RegExp(`(?:^|; )${UID_COOKIE}=([^;]+)`));
@@ -96,6 +116,7 @@ export function garminTokensExpiresAt(): Date | null {
 export function clearGarminTokens(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(GARMIN_KEY);
+  localStorage.removeItem(GARMIN_USER_ID_KEY);
 }
 
 export function savePlan(plan: TrainingPlan): void {

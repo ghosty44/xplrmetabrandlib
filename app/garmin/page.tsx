@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { loadGarminTokens, saveGarminTokens, GarminTokens, loadShoes, saveShoes } from '@/lib/store';
+import { loadGarminTokens, saveGarminTokens, GarminTokens, loadShoes, saveShoes, loadUserId } from '@/lib/store';
 import { formatPace } from '@/lib/zones';
 import { Shoe } from '@/lib/types';
 
@@ -196,7 +196,32 @@ export default function GarminDashboard() {
     fetchData(tokens);
   }, []);
 
-  useEffect(() => { setShoes(loadShoes()); }, []);
+  useEffect(() => {
+    // Load from localStorage cache first, then sync from DB
+    setShoes(loadShoes());
+    const userId = loadUserId();
+    if (userId) {
+      fetch(`/api/profile?userId=${encodeURIComponent(userId)}`)
+        .then(r => r.json())
+        .then((d: { shoes?: Shoe[] }) => {
+          if (d.shoes?.length) {
+            setShoes(d.shoes);
+            saveShoes(d.shoes);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  function syncShoesToDB(updated: Shoe[]) {
+    const userId = loadUserId();
+    if (!userId) return;
+    fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, shoes: updated }),
+    }).catch(() => {});
+  }
 
   function addShoe() {
     if (!newShoeName.trim() || !newShoeDate) return;
@@ -209,6 +234,7 @@ export default function GarminDashboard() {
     const next = [...shoes, shoe];
     setShoes(next);
     saveShoes(next);
+    syncShoesToDB(next);
     setShowAddShoe(false);
     setNewShoeName('');
     setNewShoeDate('');
@@ -219,6 +245,7 @@ export default function GarminDashboard() {
     const next = shoes.filter(s => s.id !== id);
     setShoes(next);
     saveShoes(next);
+    syncShoesToDB(next);
   }
 
   async function fetchData(tokens: GarminTokens) {
@@ -240,6 +267,7 @@ export default function GarminDashboard() {
           setShoes(prev => {
             const synced = syncGarminShoes(json.data!.shoes!, prev);
             saveShoes(synced);
+            syncShoesToDB(synced);
             return synced;
           });
         }
