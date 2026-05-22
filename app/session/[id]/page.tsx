@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loadPlan, savePlan, markSessionCompleted, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, loadUserId, GarminTokens } from '@/lib/store';
+import { loadPlan, savePlan, markSessionCompleted, markSessionSkipped, markSessionGarminSynced, loadGarminTokens, saveGarminTokens, loadUserId, GarminTokens } from '@/lib/store';
 import { Session, GpxPoint } from '@/lib/types';
 import { getZoneConfig, formatPace, getZoneHRRange } from '@/lib/zones';
 
@@ -22,6 +22,76 @@ const ZONE_INTENSITY: Record<string, number> = {
 
 const DAY_LABELS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
+type ExplInfo = {
+  emoji: string;
+  what: string;
+  why: string;
+  tips: string[];
+};
+
+const SESSION_EXPLANATIONS: Record<string, ExplInfo> = {
+  'Endurance Fondamentale': {
+    emoji: '🫁',
+    what: 'Course à allure modérée et confortable où tu peux tenir une conversation complète.',
+    why: 'Développe le système aérobie de base, améliore la capacité de ton corps à brûler les graisses comme carburant et renforce tes tendons et os progressivement.',
+    tips: ['Reste en zone "conversation" (tu dois pouvoir parler par phrases entières)', 'Résiste à la tentation d\'aller plus vite', 'C\'est la séance qui construit 80% de ta forme'],
+  },
+  'Sortie Longue': {
+    emoji: '🏃',
+    what: 'La séance phare de la semaine : longue sortie à allure EF pour bâtir ton endurance spécifique.',
+    why: 'Adapte ton corps à rester longtemps sur les jambes, améliore la gestion des réserves de glycogène et prépare mentalement et physiquement à la distance de course.',
+    tips: ['Pars lentement — plus lentement que tu ne le penses nécessaire', 'Hydrate-toi toutes les 20 min', 'Simule les conditions de course (nutrition, chaussures)'],
+  },
+  'Récupération Active': {
+    emoji: '🌿',
+    what: 'Footing très léger à allure récupération, souvent le lendemain d\'un effort intense.',
+    why: 'Accélère la récupération musculaire en activant la circulation sans fatiguer davantage. Mieux que le repos complet pour éliminer les déchets métaboliques.',
+    tips: ['Vrai rythme de récup — encore plus lent qu\'EF', 'Ne te fixe aucun objectif de performance', 'C\'est le moment de scanner tes sensations'],
+  },
+  'Intervalles Seuil': {
+    emoji: '⚡',
+    what: 'Répétitions à allure seuil (environ 87% de ta VMA) entrecoupées de récupération.',
+    why: 'Repousse le seuil lactique — la vitesse à laquelle tu commences à accumuler de l\'acide lactique. Un seuil plus élevé = tu cours plus vite plus longtemps.',
+    tips: ['L\'allure doit être "confortablement difficile" — tu peux dire quelques mots', 'La récupération est aussi importante que l\'effort', 'Consistance sur toutes les répétitions'],
+  },
+  'Seuil Longs': {
+    emoji: '🔥',
+    what: 'Blocs continus à allure seuil de 10 à 20 min — plus exigeants que les intervalles courts.',
+    why: 'Améliore la capacité à maintenir une allure rapide sur la durée, ce qui est directement corrélé avec ta performance en course.',
+    tips: ['Démarre légèrement en dessous de l\'allure cible et monte progressivement', 'Concentre-toi sur la régularité de l\'allure', 'Surveille ta FC — elle monte progressivement même à allure constante'],
+  },
+  'Tempo': {
+    emoji: '🎯',
+    what: 'Course soutenue à allure tempo (85-90% VMA) pendant une durée prolongée.',
+    why: 'Développe à la fois l\'efficacité mécanique et la tolérance à l\'inconfort à allures rapides. Excellente séance de préparation spécifique.',
+    tips: ['Choisis un parcours plat pour maintenir l\'allure', 'Commence 5-10 sec/km plus lent et accélère', 'La distance doit être calculée avant — ne t\'arrête pas pour regarder la montre'],
+  },
+  'Rappel Allure Cible': {
+    emoji: '🎪',
+    what: 'Entraîne-toi à courir précisément à l\'allure de ta course objectif.',
+    why: 'Le feeling de ton allure cible doit devenir automatique. Cette séance grave en mémoire musculaire le rythme exact que tu devras tenir en compétition.',
+    tips: ['Concentre-toi sur les sensations, pas seulement sur les chiffres de la montre', 'C\'est l\'allure que tu vises en course — teste-la en conditions proches', 'Note comment tu te sens : c\'est une allure que tu dois pouvoir maintenir longtemps'],
+  },
+  'VO2max Courts': {
+    emoji: '🚀',
+    what: 'Répétitions courtes (30s à 2 min) à allure VO2max (95-100% VMA) avec récupération égale ou supérieure.',
+    why: 'Stimule le développement du VO2max — ta capacité maximale à utiliser l\'oxygène. La zone la plus efficace pour progresser en vitesse pure.',
+    tips: ['Chaque répétition doit être à fond — qualité sur quantité', 'Récupère complètement entre les répétitions', 'Commence conservateur : si tu tiens toutes les reps, tu es au bon niveau'],
+  },
+  'VO2max Développement': {
+    emoji: '🚀',
+    what: 'Intervalles de 2 à 4 min à intensité VO2max pour développer ta puissance aérobie maximale.',
+    why: 'Ces séances sont celles qui font le plus progresser ta VMA et donc ton plafond de vitesse. Elles sont exigeantes mais très efficaces.',
+    tips: ['Chauffe-toi bien — au moins 15 min à EF', 'Règle ton effort par la FC en fin d\'intervalle (95%+ FC max)', 'Laisse 48-72h de récupération après cette séance'],
+  },
+  'VO2max Spécifique': {
+    emoji: '🚀',
+    what: 'Travail ciblé à l\'intensité VO2max adapté à ta discipline et ta phase d\'entraînement.',
+    why: 'Perfectionne ton efficacité à haute intensité tout en préparant spécifiquement les filières énergétiques que tu utiliseras en course.',
+    tips: ['Adapte selon tes sensations — la fatigue s\'accumule sur les semaines', 'Priorise la qualité des premières répétitions', 'Bois de l\'eau entre chaque répétition'],
+  },
+};
+
 export default function SessionPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -31,6 +101,8 @@ export default function SessionPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
   const [showRouteEditor, setShowRouteEditor] = useState(false);
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  const [showExpl, setShowExpl] = useState(false);
 
   useEffect(() => {
     const p = loadPlan();
@@ -56,7 +128,23 @@ export default function SessionPage() {
   const handleComplete = () => {
     if (!session) return;
     markSessionCompleted(session.id);
-    setSession((s) => s ? { ...s, completed: true } : s);
+    setSession((s) => s ? { ...s, completed: true, skipped: false } : s);
+    syncPlanToDB();
+  };
+
+  const handleSkip = () => {
+    if (!session) return;
+    if (!confirmSkip) { setConfirmSkip(true); return; }
+    markSessionSkipped(session.id, true);
+    setSession((s) => s ? { ...s, skipped: true, completed: false } : s);
+    setConfirmSkip(false);
+    syncPlanToDB();
+  };
+
+  const handleUndoSkip = () => {
+    if (!session) return;
+    markSessionSkipped(session.id, false);
+    setSession((s) => s ? { ...s, skipped: false } : s);
     syncPlanToDB();
   };
 
@@ -122,6 +210,7 @@ export default function SessionPage() {
   const totalMin = session.totalMin;
   const isStrength = session.type === 'strength';
   const uniqueZones = Array.from(new Set(session.steps.map((s) => s.zone).filter(Boolean))) as import('@/lib/types').Zone[];
+  const expl = SESSION_EXPLANATIONS[session.name];
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
@@ -144,6 +233,11 @@ export default function SessionPage() {
                   <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                     <path d="M1 4l2.5 2.5L9 1" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
+                </div>
+              )}
+              {session.skipped && !session.completed && (
+                <div className="w-5 h-5 rounded-full bg-[#8E8E93] flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-[10px] font-bold leading-none">–</span>
                 </div>
               )}
               {session.garminSynced && (
@@ -177,10 +271,71 @@ export default function SessionPage() {
       </header>
 
       <main className="max-w-md mx-auto px-4 pb-32 space-y-3">
+        {/* Skipped banner */}
+        {session.skipped && !session.completed && (
+          <div className="rounded-[20px] bg-[#8E8E93]/10 border border-[#8E8E93]/20 px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-[13px] font-semibold text-[#8E8E93]">Séance passée</p>
+              <p className="text-[11px] text-[#8E8E93]/70 mt-0.5">Tu as indiqué ne pas avoir fait cette séance.</p>
+            </div>
+            <button
+              onClick={handleUndoSkip}
+              className="text-[12px] font-semibold text-[#0F0F10] bg-white border border-black/8 px-3 py-1.5 rounded-[10px] flex-shrink-0 transition-all active:scale-[0.97]"
+            >
+              Annuler
+            </button>
+          </div>
+        )}
+
         {/* Description */}
         {session.description && (
           <div className="rounded-[20px] bg-white border border-black/5 px-5 py-4">
             <p className="text-[13px] text-[#8E8E93] leading-relaxed">{session.description}</p>
+          </div>
+        )}
+
+        {/* Session explanation card */}
+        {expl && (
+          <div className="rounded-[20px] bg-white border border-black/5 overflow-hidden">
+            <button
+              onClick={() => setShowExpl((v) => !v)}
+              className="w-full flex items-center gap-3 px-5 py-4 text-left transition-all active:bg-[#F2F2F7]/50"
+            >
+              <span className="text-xl flex-shrink-0">{expl.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-[#0F0F10]">C&apos;est quoi cette séance ?</p>
+                <p className="text-[11px] text-[#8E8E93]">{showExpl ? 'Masquer les détails' : 'Voir les détails'}</p>
+              </div>
+              <svg
+                width="16" height="16" viewBox="0 0 16 16" fill="none"
+                className={`flex-shrink-0 transition-transform ${showExpl ? 'rotate-180' : ''}`}
+              >
+                <path d="M4 6l4 4 4-4" stroke="#8E8E93" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+            {showExpl && (
+              <div className="px-5 pb-5 space-y-3 border-t border-[#F2F2F7]">
+                <div className="pt-3">
+                  <p className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Qu&apos;est-ce que c&apos;est</p>
+                  <p className="text-[13px] text-[#0F0F10] leading-relaxed">{expl.what}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Pourquoi c&apos;est utile</p>
+                  <p className="text-[13px] text-[#0F0F10] leading-relaxed">{expl.why}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Conseils</p>
+                  <ul className="space-y-1.5">
+                    {expl.tips.map((tip, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-[#C8E635] font-bold text-[13px] mt-0.5 flex-shrink-0">·</span>
+                        <p className="text-[13px] text-[#0F0F10] leading-relaxed">{tip}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -349,23 +504,38 @@ export default function SessionPage() {
         )}
 
         {/* Action buttons */}
-        <div className="flex gap-2 pt-1">
-          {!isStrength && (
+        <div className="space-y-2 pt-1">
+          <div className="flex gap-2">
+            {!isStrength && (
+              <button
+                onClick={handleGarminSync}
+                disabled={syncing || !!session.garminSynced}
+                className="flex-1 py-3.5 px-4 rounded-[16px] bg-white border border-black/8 text-[13px] font-semibold text-[#0F0F10] disabled:opacity-40 transition-all active:scale-[0.97]"
+              >
+                {syncing ? 'Sync...' : session.garminSynced ? '✓ Garmin' : 'Sync Garmin'}
+              </button>
+            )}
             <button
-              onClick={handleGarminSync}
-              disabled={syncing || !!session.garminSynced}
-              className="flex-1 py-3.5 px-4 rounded-[16px] bg-white border border-black/8 text-[13px] font-semibold text-[#0F0F10] disabled:opacity-40 transition-all active:scale-[0.97]"
+              onClick={handleComplete}
+              disabled={session.completed}
+              className="flex-1 py-3.5 px-4 rounded-[16px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:bg-[#C8E635] disabled:text-[#0F0F10] transition-all active:scale-[0.97]"
             >
-              {syncing ? 'Sync...' : session.garminSynced ? '✓ Garmin' : 'Sync Garmin'}
+              {session.completed ? '✓ Complétée' : 'Valider la séance'}
+            </button>
+          </div>
+          {!session.completed && !session.skipped && (
+            <button
+              onClick={handleSkip}
+              onBlur={() => setConfirmSkip(false)}
+              className={`w-full py-3 rounded-[14px] text-[13px] font-semibold transition-all active:scale-[0.98] ${
+                confirmSkip
+                  ? 'bg-red-500 text-white'
+                  : 'bg-[#F2F2F7] text-[#8E8E93]'
+              }`}
+            >
+              {confirmSkip ? 'Confirmer — marquer comme non faite' : 'Je ne l\'ai pas faite'}
             </button>
           )}
-          <button
-            onClick={handleComplete}
-            disabled={session.completed}
-            className="flex-1 py-3.5 px-4 rounded-[16px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:bg-[#C8E635] disabled:text-[#0F0F10] transition-all active:scale-[0.97]"
-          >
-            {session.completed ? '✓ Complétée' : 'Valider la séance'}
-          </button>
         </div>
       </main>
     </div>

@@ -77,6 +77,8 @@ function SessionCard({ session, date, maxHR }: { session: Session; date: Date; m
         className={`rounded-[20px] p-4 cursor-pointer transition-all active:scale-[0.97] ${
           session.completed
             ? 'bg-[#C8E635]/15 border border-[#C8E635]/30'
+            : session.skipped
+            ? 'bg-white/50 border border-[#8E8E93]/20 opacity-60'
             : 'bg-white border border-black/5 hover:border-black/10'
         }`}
       >
@@ -103,6 +105,11 @@ function SessionCard({ session, date, maxHR }: { session: Session; date: Date; m
                 <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
                   <path d="M1 4l2.5 2.5L9 1" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
+              </div>
+            )}
+            {session.skipped && !session.completed && (
+              <div className="w-5 h-5 rounded-full bg-[#8E8E93] flex items-center justify-center">
+                <span className="text-white text-[10px] font-bold leading-none">–</span>
               </div>
             )}
             {session.garminSynced && (
@@ -395,6 +402,45 @@ export default function DashboardPage() {
               return <RestCard key={day} day={day} date={date} />;
             })}
           </div>
+        </div>
+
+        {/* PDF export + Notifications row */}
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/plan-print"
+            target="_blank"
+            className="rounded-[20px] bg-white border border-black/5 p-4 flex items-center gap-3 transition-all active:scale-[0.97]"
+          >
+            <div className="w-9 h-9 rounded-[12px] bg-[#F2F2F7] flex items-center justify-center flex-shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-[#0F0F10]">Exporter PDF</p>
+              <p className="text-[10px] text-[#8E8E93]">Plan imprimable</p>
+            </div>
+          </Link>
+          <button
+            onClick={handleTestNotif}
+            className="rounded-[20px] bg-white border border-black/5 p-4 flex items-center gap-3 transition-all active:scale-[0.97] text-left w-full"
+          >
+            <div className="w-9 h-9 rounded-[12px] bg-[#F2F2F7] flex items-center justify-center flex-shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-[#0F0F10]">
+                {notifState === 'done' ? '✓ Activées' : notifState === 'error' ? 'Erreur' : notifState === 'loading' ? '...' : 'Notifications'}
+              </p>
+              <p className="text-[10px] text-[#8E8E93]">Rappels de séance</p>
+            </div>
+          </button>
         </div>
 
       </main>
