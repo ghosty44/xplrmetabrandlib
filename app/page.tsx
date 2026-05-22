@@ -198,7 +198,7 @@ export default function DashboardPage() {
   const [loaded, setLoaded] = useState(false);
   const [garminConnected, setGarminConnected] = useState(false);
   const [garminRequired, setGarminRequired] = useState(false);
-  const [heroDataUrl, setHeroDataUrl] = useState<string | null>(null);
+  const [heroUrl, setHeroUrl] = useState<string | null>(null);
   const [notifState, setNotifState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
   const handleTestNotif = async () => {
@@ -277,17 +277,11 @@ export default function DashboardPage() {
         })
         .catch(() => router.replace('/setup'));
     }
-    // Load hero image from gallery
-    const userId = loadUserId();
-    if (userId) {
-      fetch(`/api/gallery?userId=${encodeURIComponent(userId)}`)
-        .then((r) => r.json())
-        .then((d: { images: Array<{ purpose: string; dataUrl: string }> }) => {
-          const hero = d.images?.find((i) => i.purpose === 'hero');
-          if (hero) setHeroDataUrl(hero.dataUrl);
-        })
-        .catch(() => {});
-    }
+    // Load random background image from Blob IMG/ folder
+    fetch('/api/blob-images')
+      .then((r) => r.json())
+      .then((d: { url: string | null }) => { if (d.url) setHeroUrl(d.url); })
+      .catch(() => {});
   }, [router]);
 
   if (garminRequired && !loaded) {
@@ -339,11 +333,11 @@ export default function DashboardPage() {
         {/* Hero card */}
         <div className="relative rounded-[28px] bg-[#0F0F10] overflow-hidden">
           {/* Background image (from gallery) or glow orbs fallback */}
-          {heroDataUrl ? (
+          {heroUrl ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={heroDataUrl}
+                src={heroUrl}
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover"
                 style={{ objectPosition: 'center 35%' }}
