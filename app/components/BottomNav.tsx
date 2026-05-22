@@ -33,6 +33,29 @@ const NAV = [
     ),
   },
   {
+    href: '/library',
+    label: 'Biblio',
+    icon: (active: boolean) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+        {active ? (
+          <>
+            <rect x="3" y="3" width="7" height="9" rx="1" fill="currentColor" stroke="none"/>
+            <rect x="14" y="3" width="7" height="5" rx="1" fill="currentColor" stroke="none"/>
+            <rect x="14" y="12" width="7" height="9" rx="1" fill="currentColor" stroke="none"/>
+            <rect x="3" y="16" width="7" height="5" rx="1" fill="currentColor" stroke="none"/>
+          </>
+        ) : (
+          <>
+            <rect x="3" y="3" width="7" height="9" rx="1"/>
+            <rect x="14" y="3" width="7" height="5" rx="1"/>
+            <rect x="14" y="12" width="7" height="9" rx="1"/>
+            <rect x="3" y="16" width="7" height="5" rx="1"/>
+          </>
+        )}
+      </svg>
+    ),
+  },
+  {
     href: '/gallery',
     label: 'Galerie',
     icon: (active: boolean) => (
@@ -75,7 +98,7 @@ export default function BottomNav() {
   return (
     <div className="fixed bottom-5 inset-x-0 flex justify-center z-50 pointer-events-none">
       <nav
-        className="pointer-events-auto flex items-center gap-0.5 px-2 py-2.5 rounded-[28px]"
+        className="pointer-events-auto flex items-center gap-0 px-1.5 py-2.5 rounded-[28px]"
         style={{
           background: 'rgba(255, 255, 255, 0.28)',
           backdropFilter: 'blur(40px) saturate(200%) brightness(1.08)',
@@ -91,7 +114,7 @@ export default function BottomNav() {
             <Link
               key={href}
               href={href}
-              className="relative flex flex-col items-center gap-0.5 px-4 py-2 rounded-[18px] transition-all active:scale-90"
+              className="relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-[18px] transition-all active:scale-90"
               style={
                 active
                   ? {
