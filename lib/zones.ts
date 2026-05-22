@@ -1,4 +1,4 @@
-import { Zone, ZoneConfig } from './types';
+import { Step, Zone, ZoneConfig } from './types';
 
 export const ZONE_CONFIGS: Record<Zone, ZoneConfig> = {
   EF: {
@@ -54,22 +54,75 @@ export function getZoneHRRange(zone: Zone): { min: number; max: number } {
   }
 }
 
+/**
+ * Pace ranges in sec/km relative to threshold pace.
+ * minSec = faster end (fewer sec/km), maxSec = slower end.
+ *
+ * Zone ordering (faster → slower):
+ *   VO2max (×0.88–0.94) < SSeuilVO2 (×0.94–1.00) < Seuil (×1.00–1.05)
+ *   < Neutre (×1.20–1.25) < EF (×1.28–1.38) < Recup (×1.45–1.60)
+ */
 export function getZonePaceRange(
   zone: Zone,
-  thresholdSec: number
+  thresholdSec: number,
 ): { minSec: number; maxSec: number } {
   switch (zone) {
-    case 'EF':
-      return { minSec: Math.round(thresholdSec * 1.28), maxSec: Math.round(thresholdSec * 1.38) };
-    case 'Seuil':
-      return { minSec: Math.round(thresholdSec * 1.0), maxSec: Math.round(thresholdSec * 1.05) };
-    case 'SSeuilVO2':
-      return { minSec: Math.round(thresholdSec * 1.07), maxSec: Math.round(thresholdSec * 1.15) };
     case 'VO2max':
       return { minSec: Math.round(thresholdSec * 0.88), maxSec: Math.round(thresholdSec * 0.94) };
-    case 'Recup':
-      return { minSec: Math.round(thresholdSec * 1.45), maxSec: Math.round(thresholdSec * 1.60) };
+    case 'SSeuilVO2':
+      // Corrected: between VO2max and Seuil (was erroneously 1.07–1.15×, i.e. slower than threshold)
+      return { minSec: Math.round(thresholdSec * 0.94), maxSec: Math.round(thresholdSec * 1.00) };
+    case 'Seuil':
+      return { minSec: Math.round(thresholdSec * 1.00), maxSec: Math.round(thresholdSec * 1.05) };
     case 'Neutre':
       return { minSec: Math.round(thresholdSec * 1.20), maxSec: Math.round(thresholdSec * 1.25) };
+    case 'EF':
+      return { minSec: Math.round(thresholdSec * 1.28), maxSec: Math.round(thresholdSec * 1.38) };
+    case 'Recup':
+      return { minSec: Math.round(thresholdSec * 1.45), maxSec: Math.round(thresholdSec * 1.60) };
   }
+}
+
+// ── Volume calculation utilities ───────────────────────────────────────────
+
+/**
+ * Estimated km for one step from its duration, pace range and repetitions.
+ * Uses the midpoint of the pace range as average speed.
+ */
+export function stepKm(
+  durationMin: number,
+  paceRange: { minSec: number; maxSec: number },
+  reps = 1,
+): number {
+  const midPaceSec = (paceRange.minSec + paceRange.maxSec) / 2;
+  return (durationMin * 60 * reps) / midPaceSec;
+}
+
+/**
+ * Total km for a session — derived exclusively from its steps.
+ * Strength steps (no zone) contribute 0 km.
+ * Recovery steps are included in the total because they still cover ground.
+ */
+export function sessionKm(steps: Step[], thresholdSec: number): number {
+  let total = 0;
+  for (const step of steps) {
+    if (!step.zone) continue;
+    const paceRange = getZonePaceRange(step.zone, thresholdSec);
+    const reps = step.reps ?? 1;
+    total += stepKm(step.durationMin, paceRange, reps);
+  }
+  return Math.round(total * 10) / 10;
+}
+
+/**
+ * Total duration in minutes — computed from steps, respecting reps.
+ * This is the ground-truth source for session.totalMin.
+ */
+export function sessionTotalMin(steps: Step[]): number {
+  let total = 0;
+  for (const step of steps) {
+    const reps = step.reps ?? 1;
+    total += step.durationMin * reps;
+  }
+  return total;
 }
