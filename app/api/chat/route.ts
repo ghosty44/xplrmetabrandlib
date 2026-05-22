@@ -75,7 +75,10 @@ export async function POST(req: NextRequest) {
       systemInstruction: SYSTEM_PROMPT,
     });
 
-    const history = messages.slice(0, -1).map((m) => ({
+    // Gemini requires history to start with a 'user' turn — drop leading model messages (welcome msg)
+    const historyRaw = messages.slice(0, -1);
+    const firstUserIdx = historyRaw.findIndex(m => m.role === 'user');
+    const history = (firstUserIdx >= 0 ? historyRaw.slice(firstUserIdx) : []).map((m) => ({
       role: m.role,
       parts: [{ text: m.content }],
     }));
