@@ -3,25 +3,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { TrainingPlan } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY non configurée' }, { status: 500 });
-  }
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ message: '⚠️ Clé API Gemini manquante.' });
+    }
 
-  const { messages, plan, garminSummary } = await req.json() as {
-    messages: Array<{ role: 'user' | 'model'; content: string }>;
-    plan?: TrainingPlan | null;
-    garminSummary?: string | null;
-  };
+    let body: { messages?: Array<{ role: 'user' | 'model'; content: string }>; plan?: TrainingPlan | null; garminSummary?: string | null };
+    try {
+      body = await req.json() as typeof body;
+    } catch {
+      return NextResponse.json({ message: '⚠️ Corps de requête invalide.' });
+    }
 
-  if (!messages?.length) {
-    return NextResponse.json({ error: 'messages requis' }, { status: 400 });
-  }
+    const { messages, plan, garminSummary } = body;
+    if (!messages?.length) {
+      return NextResponse.json({ message: '⚠️ messages requis.' });
+    }
 
-  const planContext = plan ? buildPlanContext(plan) : 'Aucun plan disponible.';
-  const garminContext = garminSummary ?? 'Aucune donnée Garmin disponible.';
+    const planContext = plan ? buildPlanContext(plan) : 'Aucun plan disponible.';
+    const garminContext = garminSummary ?? 'Aucune donnée Garmin disponible.';
 
-  const systemPrompt = `Tu es "Coach RunAI", assistant personnel de course à pied. Tu parles exclusivement en français, de façon concise et bienveillante. Tu réponds en 3-5 phrases maximum sauf si l'utilisateur demande une explication détaillée.
+    const systemPrompt = `Tu es "Coach RunAI", assistant personnel de course à pied. Tu parles exclusivement en français, de façon concise et bienveillante. Tu réponds en 3-5 phrases maximum sauf si l'utilisateur demande une explication détaillée.
 
 Tu as accès aux données complètes de l'utilisateur :
 
@@ -38,30 +41,38 @@ RÈGLES :
 - Ne joue jamais au médecin.
 - Tu peux suggérer des adaptations de l'entraînement (allure, volume) basées sur les données Garmin si elles montrent de la fatigue ou de la progression.`;
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: systemPrompt,
-  });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      systemInstruction: systemPrompt,
+    });
 
-  const history = messages.slice(0, -1).map((m) => ({
-    role: m.role,
-    parts: [{ text: m.content }],
-  }));
+    // Gemini requires history to start with a 'user' turn — drop leading model messages (welcome msg)
+    const historyRaw = messages.slice(0, -1);
+    const firstUserIdx = historyRaw.findIndex(m => m.role === 'user');
+    const history = (firstUserIdx >= 0 ? historyRaw.slice(firstUserIdx) : []).map((m) => ({
+      role: m.role,
+      parts: [{ text: m.content }],
+    }));
 
-  const chat = model.startChat({ history });
-  const lastMsg = messages[messages.length - 1].content;
+    const chat = model.startChat({ history });
+    const lastMsg = messages[messages.length - 1].content;
 
-  let text: string;
-  try {
-    const result = await chat.sendMessage(lastMsg);
-    text = result.response.text();
+    let text: string;
+    try {
+      const result = await chat.sendMessage(lastMsg);
+      text = result.response.text();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur Gemini';
+      return NextResponse.json({ message: `⚠️ ${msg}` });
+    }
+
+    return NextResponse.json({ message: text });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Erreur Gemini';
-    return NextResponse.json({ message: `Désolé, une erreur est survenue : ${msg}` }, { status: 200 });
+    const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+    console.error('[/api/assistant] unhandled error:', msg);
+    return NextResponse.json({ message: `⚠️ Erreur interne : ${msg}` });
   }
-
-  return NextResponse.json({ message: text });
 }
 
 function buildPlanContext(plan: TrainingPlan): string {
