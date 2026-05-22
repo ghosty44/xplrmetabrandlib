@@ -330,19 +330,28 @@ export default function GarminDashboard() {
           </button>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-          {(['overview', 'activities', 'sleep', 'health'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
-                activeTab === tab ? 'bg-[#0F0F10] text-white' : 'bg-white border border-black/8 text-[#8E8E93]'
-              }`}
-            >
-              {TAB_LABELS[tab]}
-            </button>
-          ))}
+        {/* Tab bar — negative margin lets it overflow the padded main and reach screen edges */}
+        <div className="relative -mx-4">
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 pb-0.5">
+            {(['overview', 'activities', 'sleep', 'health'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
+                  activeTab === tab ? 'bg-[#0F0F10] text-white' : 'bg-white border border-black/8 text-[#8E8E93]'
+                }`}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            ))}
+            {/* right padding sentinel so last tab isn't flush against edge */}
+            <div className="flex-shrink-0 w-4" />
+          </div>
+          {/* fade hint — signals scrollability when tabs overflow */}
+          <div
+            className="absolute right-0 inset-y-0 w-10 pointer-events-none"
+            style={{ background: 'linear-gradient(to left, #F2F2F7, transparent)' }}
+          />
         </div>
 
         {error && error !== 'not_connected' && (
