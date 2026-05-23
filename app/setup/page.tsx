@@ -16,11 +16,13 @@ import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 
 type Phase =
   | 'garmin' | 'loading'
-  | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7'
+  | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8'
   | 'summary' | 'chat' | 'preview';
 
 type GoalType = 'road' | 'trail' | 'beginner' | 'injury' | 'test';
 type FitnessState = 'active' | 'break2w' | 'break3w' | 'break1m';
+type RecentInjuries = 'none' | 'knee' | 'achilles' | 'back' | 'other';
+type StrengthPerWeek = 0 | 1 | 2;
 type TrainingEnv = 'flat' | 'bump' | 'hill' | 'mountain' | 'cols';
 type ChatMessage = { role: 'user' | 'model'; content: string; hidden?: boolean };
 
@@ -264,12 +266,12 @@ function StepHeader({ step, onBack }: { step: number; onBack?: () => void }) {
           </button>
         ) : <div className="w-9 h-9 flex-shrink-0" />}
         <p className="flex-1 text-center text-[15px] font-semibold text-[#0F0F10]">Ajouter un objectif</p>
-        <p className="text-[13px] font-semibold text-[#8E8E93] w-9 text-right flex-shrink-0">{step}/7</p>
+        <p className="text-[13px] font-semibold text-[#8E8E93] w-9 text-right flex-shrink-0">{step}/8</p>
       </div>
       <div className="h-1 bg-[#E5E5EA] rounded-full overflow-hidden">
         <div
           className="h-full bg-[#0F0F10] rounded-full transition-all duration-500"
-          style={{ width: `${(step / 7) * 100}%` }}
+          style={{ width: `${(step / 8) * 100}%` }}
         />
       </div>
     </div>
@@ -568,6 +570,7 @@ function Step3RaceDetails({
 // ── Step 4 — Fitness state ────────────────────────────────────────────────────
 
 function Step4FitnessState({ onSelect, onBack }: { onSelect: (s: FitnessState) => void; onBack: () => void }) {
+
   const [selected, setSelected] = useState<FitnessState | null>(null);
   const opts: { id: FitnessState; title: string; subtitle?: string }[] = [
     { id: 'active',  title: 'Non, je cours régulièrement' },
@@ -594,9 +597,70 @@ function Step4FitnessState({ onSelect, onBack }: { onSelect: (s: FitnessState) =
   );
 }
 
-// ── Step 5 — Weekly rhythm ────────────────────────────────────────────────────
+// ── Step 5 — Physical profile (injuries + strength) ──────────────────────────
 
-function Step5WeeklyRhythm({ onSelect, onBack }: { onSelect: (s: 3 | 4 | 5 | 6) => void; onBack: () => void }) {
+function Step5PhysicalProfile({
+  onSelect, onBack,
+}: {
+  onSelect: (injuries: RecentInjuries, strength: StrengthPerWeek) => void;
+  onBack: () => void;
+}) {
+  const [injuries, setInjuries] = useState<RecentInjuries | null>(null);
+  const [strength, setStrength] = useState<StrengthPerWeek | null>(null);
+
+  const injuryOpts: { id: RecentInjuries; title: string; subtitle?: string }[] = [
+    { id: 'none',     title: 'Aucune blessure' },
+    { id: 'knee',     title: 'Genou',            subtitle: 'Douleur, tendinite ou opération récente' },
+    { id: 'achilles', title: "Tendon d'Achille",  subtitle: 'Tendinite ou déchirure récente' },
+    { id: 'back',     title: 'Dos / hanche',      subtitle: 'Lombaires, sciatique ou hanche' },
+    { id: 'other',    title: 'Autre',             subtitle: 'Précise à ton coach si besoin' },
+  ];
+  const strengthOpts: { val: StrengthPerWeek; title: string; subtitle?: string }[] = [
+    { val: 0, title: '0 séance',           subtitle: 'Pas de renforcement actuellement' },
+    { val: 1, title: '1 séance / semaine', subtitle: 'Gainage, muscu légère…' },
+    { val: 2, title: '2 séances / semaine', subtitle: 'Programme de force régulier' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F0] flex flex-col">
+      <StepHeader step={5} onBack={onBack} />
+      <div className="max-w-md mx-auto w-full px-5 pb-36 space-y-6">
+        <div>
+          <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Ton profil physique</h2>
+          <p className="text-[13px] text-[#8E8E93]">Pour adapter les séances et la progression</p>
+        </div>
+
+        <div>
+          <p className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-[0.1em] mb-2">Blessures récentes</p>
+          <div className="space-y-2">
+            {injuryOpts.map((opt) => (
+              <RadioCard key={opt.id} selected={injuries === opt.id} onSelect={() => setInjuries(opt.id)}
+                title={opt.title} subtitle={opt.subtitle} />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-[0.1em] mb-2">Renforcement musculaire</p>
+          <div className="space-y-2">
+            {strengthOpts.map((opt) => (
+              <RadioCard key={opt.val} selected={strength === opt.val} onSelect={() => setStrength(opt.val)}
+                title={opt.title} subtitle={opt.subtitle} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <ContinueBtn
+        disabled={injuries === null || strength === null}
+        onClick={() => injuries !== null && strength !== null && onSelect(injuries, strength)}
+      />
+    </div>
+  );
+}
+
+// ── Step 6 — Weekly rhythm ────────────────────────────────────────────────────
+
+function Step6WeeklyRhythm({ onSelect, onBack }: { onSelect: (s: 3 | 4 | 5 | 6) => void; onBack: () => void }) {
   const [selected, setSelected] = useState<3 | 4 | 5 | 6 | null>(null);
   const opts: { sessions: 3 | 4 | 5 | 6; subtitle: string; badge?: string }[] = [
     { sessions: 3, subtitle: '12 à 20 km par semaine', badge: 'RECOMMANDÉ' },
@@ -607,7 +671,7 @@ function Step5WeeklyRhythm({ onSelect, onBack }: { onSelect: (s: 3 | 4 | 5 | 6) 
 
   return (
     <div className="min-h-screen bg-[#F5F5F0] flex flex-col">
-      <StepHeader step={5} onBack={onBack} />
+      <StepHeader step={6} onBack={onBack} />
       <div className="max-w-md mx-auto w-full px-5 pb-36">
         <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">À quel rythme hebdo souhaites-tu t&apos;entraîner&nbsp;?</h2>
         <p className="text-[13px] text-[#8E8E93] mb-6">Choisis ce qui s&apos;adapte le mieux à ton quotidien</p>
@@ -627,9 +691,9 @@ function Step5WeeklyRhythm({ onSelect, onBack }: { onSelect: (s: 3 | 4 | 5 | 6) 
   );
 }
 
-// ── Step 6 — Training environment ─────────────────────────────────────────────
+// ── Step 7 — Training environment ─────────────────────────────────────────────
 
-function Step6TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => void; onBack: () => void }) {
+function Step7TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => void; onBack: () => void }) {
   const [selected, setSelected] = useState<TrainingEnv | null>(null);
   const opts: { id: TrainingEnv; title: string; subtitle: string }[] = [
     { id: 'flat',     title: 'Pas de côte',       subtitle: 'Terrain plat uniquement' },
@@ -641,7 +705,7 @@ function Step6TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => 
 
   return (
     <div className="min-h-screen bg-[#F5F5F0] flex flex-col">
-      <StepHeader step={6} onBack={onBack} />
+      <StepHeader step={7} onBack={onBack} />
       <div className="max-w-md mx-auto w-full px-5 pb-36">
         <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">À quoi ressemble ton terrain de jeu&nbsp;?</h2>
         <p className="text-[13px] text-[#8E8E93] mb-6">Pour adapter tes séances de côte</p>
@@ -1134,10 +1198,10 @@ function SummaryScreen({
         <div className="flex items-center gap-3 mb-4">
           <div className="w-9 h-9 flex-shrink-0" />
           <p className="flex-1 text-center text-[15px] font-semibold text-[#0F0F10]">Ajouter un objectif</p>
-          <p className="text-[13px] font-semibold text-[#8E8E93] w-9 text-right flex-shrink-0">7/7</p>
+          <p className="text-[13px] font-semibold text-[#8E8E93] w-9 text-right flex-shrink-0">8/8</p>
         </div>
         <div className="h-1 bg-[#E5E5EA] rounded-full overflow-hidden">
-          <div className="h-full bg-[#0F0F10] rounded-full" style={{ width: '85%' }} />
+          <div className="h-full bg-[#0F0F10] rounded-full" style={{ width: '92%' }} />
         </div>
       </div>
 
@@ -1228,6 +1292,8 @@ function ChatContent() {
   const [raceElevationGain, setRaceElevationGain] = useState('');
   const [raceGoalTime, setRaceGoalTime] = useState('');
   const [fitnessState, setFitnessState] = useState<FitnessState | null>(null);
+  const [recentInjuries, setRecentInjuries] = useState<RecentInjuries | null>(null);
+  const [strengthPerWeek, setStrengthPerWeek] = useState<StrengthPerWeek | null>(null);
   const [weeklySessions, setWeeklySessions] = useState<3 | 4 | 5 | 6 | null>(null);
   const [trainingEnv, setTrainingEnv] = useState<TrainingEnv | null>(null);
   const [blobImages, setBlobImages] = useState<string[]>([]);
@@ -1325,6 +1391,8 @@ function ChatContent() {
         raceElevationGain: raceElevationGain || undefined,
         racePriority: racePriority ?? undefined,
         fitnessState: fitnessState ?? 'active',
+        recentInjuries: recentInjuries ?? 'none',
+        strengthPerWeek: strengthPerWeek ?? 0,
         weeklySessions: weeklySessions ?? 3,
         trainingEnv: trainingEnv ?? 'flat',
         raceGoalTime: raceGoalTime || undefined,
@@ -1511,7 +1579,7 @@ function ChatContent() {
     <SummaryScreen
       loading={summaryLoading}
       text={summaryText}
-      onNext={() => setPhase('step7')}
+      onNext={() => setPhase('step8')}
       goalType={goalType ?? 'road'}
       raceName={raceName} raceDistanceKm={raceDistanceKm}
       raceElevationGain={raceElevationGain} raceDate={raceDate}
@@ -1566,14 +1634,21 @@ function ChatContent() {
   );
 
   if (phase === 'step5') return (
-    <Step5WeeklyRhythm
-      onSelect={(s) => { setWeeklySessions(s); setPhase('step6'); }}
+    <Step5PhysicalProfile
+      onSelect={(inj, str) => { setRecentInjuries(inj); setStrengthPerWeek(str); setPhase('step6'); }}
       onBack={() => setPhase('step4')}
     />
   );
 
   if (phase === 'step6') return (
-    <Step6TrainingEnv
+    <Step6WeeklyRhythm
+      onSelect={(s) => { setWeeklySessions(s); setPhase('step7'); }}
+      onBack={() => setPhase('step5')}
+    />
+  );
+
+  if (phase === 'step7') return (
+    <Step7TrainingEnv
       onSelect={(e) => {
         setTrainingEnv(e);
         const onboarding: Partial<OnboardingData> = {
@@ -1581,20 +1656,20 @@ function ChatContent() {
           raceName: raceName || undefined, raceDate: raceDate || undefined,
           raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
           raceGoalTime: raceGoalTime || undefined, fitnessState: fitnessState ?? undefined,
+          recentInjuries: recentInjuries ?? undefined, strengthPerWeek: strengthPerWeek ?? undefined,
           weeklySessions: weeklySessions ?? undefined, trainingEnv: e,
         };
-        // Fetch Garmin data in parallel with summary call
         if (!garminSummary) {
           fetchGarminSummary().then(g => triggerSummary(onboarding, g)).catch(() => triggerSummary(onboarding));
         } else {
           triggerSummary(onboarding, garminSummary);
         }
       }}
-      onBack={() => setPhase('step5')}
+      onBack={() => setPhase('step6')}
     />
   );
 
-  if (phase === 'step7') return (
+  if (phase === 'step8') return (
     <Step7Result
       goalType={goalType ?? 'road'}
       raceName={raceName} raceDistanceKm={raceDistanceKm}

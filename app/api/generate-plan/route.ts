@@ -13,6 +13,8 @@ export interface OnboardingData {
   raceElevationGain?: string;
   racePriority?: 'main' | 'secondary';
   fitnessState: 'active' | 'break2w' | 'break3w' | 'break1m';
+  recentInjuries: 'none' | 'knee' | 'achilles' | 'back' | 'other';
+  strengthPerWeek: 0 | 1 | 2;
   weeklySessions: 3 | 4 | 5 | 6;
   trainingEnv: 'flat' | 'bump' | 'hill' | 'mountain' | 'cols';
   raceGoalTime?: string;
@@ -83,14 +85,22 @@ function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivity
   if (onboarding.racePriority) lines.push(`Priorité : ${onboarding.racePriority === 'main' ? 'objectif principal' : 'objectif secondaire'}`);
   if (onboarding.raceGoalTime) lines.push(`Chrono visé : ${onboarding.raceGoalTime}`);
 
+  const INJURY_LABELS: Record<string, string> = {
+    none: 'aucune',
+    knee: 'genou',
+    achilles: "tendon d'Achille",
+    back: 'dos / hanche',
+    other: 'autre (non précisé)',
+  };
+
   lines.push(
     '',
     '── Profil athlète ──',
     `État de forme : ${FITNESS_LABELS[onboarding.fitnessState]}`,
-    `Séances souhaitées : ${onboarding.weeklySessions} par semaine`,
+    `Blessures récentes : ${INJURY_LABELS[onboarding.recentInjuries] ?? 'aucune'}`,
+    `Renforcement musculaire : ${onboarding.strengthPerWeek} séance${onboarding.strengthPerWeek > 1 ? 's' : ''}/semaine`,
+    `Séances de course souhaitées : ${onboarding.weeklySessions} par semaine`,
     `Terrain d'entraînement : ${ENV_LABELS[onboarding.trainingEnv]}`,
-    `Blessures récentes : aucune signalée`,
-    `Renforcement musculaire : 0 séance/semaine`,
   );
 
   if (garmin) {
