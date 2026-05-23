@@ -622,6 +622,7 @@ function Step7Result({
   image?: string;
   onLaunch: () => void;
   launching: boolean;
+  launchStatus?: string;
   onBack: () => void;
 }) {
   const dist = parseFloat(raceDistanceKm) || 10;
@@ -1098,6 +1099,7 @@ function ChatContent() {
       image={blobImages[goalType === 'trail' ? 1 : 0] ?? blobImages[0]}
       onLaunch={handleStep7Launch}
       launching={launching}
+      launchStatus={launchStatus}
       onBack={() => setPhase('step6')}
     />
   );
