@@ -10,6 +10,7 @@ import {
 } from '@/lib/store';
 import { UserProfile, TrainingPlan, Session, Shoe } from '@/lib/types';
 import type { GeminiSession } from '@/app/api/generate-plan/route';
+import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -806,12 +807,12 @@ function ChatContent() {
   const [launchStatus, setLaunchStatus] = useState('');
   const [racePriority, setRacePriority] = useState<'main' | 'secondary' | null>(null);
 
-  const fetchGeminiPlan = async (profile: UserProfile): Promise<TrainingPlan> => {
+  const fetchGeminiPlan = async (profile: UserProfile, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
     setLaunchStatus('Gemini construit tes séances…');
     const res = await fetch('/api/generate-plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify({ profile, garmin }),
     });
     const data = await res.json() as { sessions?: GeminiSession[]; error?: string };
     if (data.sessions?.length) {
@@ -825,8 +826,25 @@ function ChatContent() {
 
   const handleStep7Launch = async () => {
     setLaunching(true);
-    setLaunchStatus('Gemini analyse ton profil…');
     try {
+      // 1. Fetch Garmin activities if tokens available
+      let garmin: GarminActivitySummary | undefined;
+      const tokens = loadGarminTokens();
+      if (tokens) {
+        setLaunchStatus('Récupération de tes courses Garmin…');
+        try {
+          const r = await fetch('/api/garmin/activities', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ garminTokens: tokens }),
+          });
+          const d = await r.json() as { summary?: GarminActivitySummary };
+          garmin = d.summary ?? undefined;
+        } catch { /* non-fatal */ }
+      }
+
+      // 2. Get profile from Gemini (chat with hidden context)
+      setLaunchStatus('Gemini analyse ton profil…');
       const context = buildOnboardingContext(
         goalType ?? 'road', raceName, raceDate, raceDistanceKm, raceElevationGain,
         racePriority, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat',
@@ -844,7 +862,8 @@ function ChatContent() {
       const profile = data.profile
         ?? buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat');
 
-      const plan = await fetchGeminiPlan(profile);
+      // 3. Generate plan with Garmin data
+      const plan = await fetchGeminiPlan(profile, garmin);
       setGeneratedPlan(plan);
       setPhase('preview');
     } catch (err) {
@@ -976,7 +995,18 @@ function ChatContent() {
         saveChatMessages(final);
         setThinking(false);
         setLaunching(true);
-        const plan = await fetchGeminiPlan(data.profile);
+        // Fetch Garmin activities to enrich plan generation
+        let garmin: GarminActivitySummary | undefined;
+        const tokens = loadGarminTokens();
+        if (tokens) {
+          setLaunchStatus('Récupération de tes courses Garmin…');
+          try {
+            const gr = await fetch('/api/garmin/activities', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ garminTokens: tokens }) });
+            const gd = await gr.json() as { summary?: GarminActivitySummary };
+            garmin = gd.summary ?? undefined;
+          } catch { /* non-fatal */ }
+        }
+        const plan = await fetchGeminiPlan(data.profile, garmin);
         setLaunching(false);
         setLaunchStatus('');
         setGeneratedPlan(plan);

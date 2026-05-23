@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { UserProfile } from '@/lib/types';
+import type { GarminActivitySummary, RunActivity } from '@/app/api/garmin/activities/route';
 
 export interface GeminiSession {
   week: number;
@@ -25,7 +26,44 @@ function fmtPace(sec: number): string {
   return `${Math.floor(sec / 60)}'${(sec % 60).toString().padStart(2, '0')}''/km`;
 }
 
-function buildPrompt(profile: UserProfile, weeksCount: number): string {
+function fmtPaceSec(sec: number): string {
+  if (!sec) return '?';
+  return `${Math.floor(sec / 60)}'${(sec % 60).toString().padStart(2, '0')}''/km`;
+}
+
+function buildGarminSection(summary: GarminActivitySummary): string {
+  const lines: string[] = [
+    '',
+    '═══════════════════════════════════════',
+    'DONNÉES GARMIN RÉELLES (ne pas ignorer)',
+    '═══════════════════════════════════════',
+    `Volume moyen 4 semaines : ${summary.weeklyKm4w} km/semaine`,
+    `Volume moyen 8 semaines : ${summary.weeklyKm8w} km/semaine`,
+    `Sortie longue max (8 sem) : ${summary.longestRunKm} km`,
+    `Séances/semaine moyenne  : ${summary.avgSessionsPerWeek}`,
+    `Allure moyenne récente   : ${fmtPaceSec(summary.recentAvgPaceSecKm)}`,
+    '',
+    `Dernières sorties (${summary.runs.length}) :`,
+  ];
+
+  for (const r of summary.runs.slice(0, 20)) {
+    const pace = fmtPaceSec(r.paceSecKm);
+    const hr = r.avgHR ? ` · ${r.avgHR}bpm` : '';
+    const elev = r.elevationGain ? ` · +${r.elevationGain}m` : '';
+    const tag = r.isTrail ? ' [TRAIL]' : '';
+    lines.push(`  ${r.date}  ${r.distanceKm}km  ${r.durationMin}min  ${pace}${hr}${elev}${tag}`);
+  }
+
+  lines.push(
+    '',
+    '→ Utilise ces données RÉELLES pour calibrer le volume hebdo, les allures et la progression.',
+    '→ Ignore les estimations du profil si elles contredisent ces données Garmin.',
+    '═══════════════════════════════════════',
+  );
+  return lines.join('\n');
+}
+
+function buildPrompt(profile: UserProfile, weeksCount: number, garmin?: GarminActivitySummary): string {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const distKm = RACE_KM[profile.goalRace] ?? 10;
   const isTrail = profile.terrain === 'trail';
@@ -42,9 +80,9 @@ PROFIL ATHLÈTE :
 - Date de course : ${profile.goalDate}
 - Chrono cible : ${profile.goalTimeMin}min (${Math.floor(profile.goalTimeMin / 60)}h${profile.goalTimeMin % 60}min)
 - Allures de référence : EF ${easyPace} | Seuil ${seuilPace} | VMA ${vmaPace}
-- Volume actuel : ${profile.weeklyKm}km/semaine
+- Volume actuel (estimé) : ${profile.weeklyKm}km/semaine
 - Jours disponibles : ${daysStr}
-- Renforcement : ${profile.strengthPerWeek ?? 0} séance(s)/semaine${profile.elevationGainPerRace ? `\n- Dénivelé course : ${profile.elevationGainPerRace}m D+` : ''}
+- Renforcement : ${profile.strengthPerWeek ?? 0} séance(s)/semaine${profile.elevationGainPerRace ? `\n- Dénivelé course : ${profile.elevationGainPerRace}m D+` : ''}${garmin ? buildGarminSection(garmin) : ''}
 
 MISSION : Génère un plan d'entraînement COMPLET de ${weeksCount} semaines menant à la course.
 
@@ -82,11 +120,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Clé API Gemini manquante' });
     }
 
-    let body: { profile?: UserProfile };
+    let body: { profile?: UserProfile; garmin?: GarminActivitySummary };
     try { body = await req.json() as typeof body; }
     catch { return NextResponse.json({ sessions: null, error: 'Corps de requête invalide' }); }
 
-    const { profile } = body;
+    const { profile, garmin } = body;
     if (!profile?.goalDate || !profile?.thresholdPaceSec) {
       return NextResponse.json({ sessions: null, error: 'Profil incomplet' });
     }
@@ -102,7 +140,7 @@ export async function POST(req: NextRequest) {
       generationConfig: { temperature: 0.7 },
     });
 
-    const prompt = buildPrompt(profile, weeksCount);
+    const prompt = buildPrompt(profile, weeksCount, garmin);
 
     let raw: string;
     try {
