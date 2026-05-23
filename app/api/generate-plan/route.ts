@@ -58,7 +58,7 @@ function parseGoalTimeMin(raceGoalTime?: string): number | null {
   return null;
 }
 
-function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivitySummary): string {
+function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivitySummary): { context: string; imposedGoalMin: number | null; imposedThresholdSec: number | null } {
   const FITNESS_LABELS: Record<string, string> = {
     active: 'actif — court régulièrement sans interruption récente',
     break2w: 'pause récente de 2 à 3 semaines',
@@ -173,7 +173,7 @@ function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivity
     if (imposedThresholdSec !== null) lines.push(`thresholdPaceSec : ${imposedThresholdSec} sec/km (${fmtPaceSec(imposedThresholdSec)})`);
   }
 
-  return lines.join('\n');
+  return { context: lines.join('\n'), imposedGoalMin, imposedThresholdSec };
 }
 
 // ── Prompt template — pure generation instructions, no athlete data ────────────
@@ -324,12 +324,20 @@ function computeWeeklyVolumes(startKm: number, weeksCount: number): number[] {
   return volumes;
 }
 
-function buildPrompt(onboarding: OnboardingData, weeksCount: number, garmin?: GarminActivitySummary): string {
+function buildPrompt(onboarding: OnboardingData, weeksCount: number, garmin?: GarminActivitySummary): {
+  prompt: string;
+  imposedGoalMin: number | null;
+  imposedThresholdSec: number | null;
+} {
   const isTrail = onboarding.goalType === 'trail';
-  const athleteContext = buildAthleteContext(onboarding, garmin);
+  const { context: athleteContext, imposedGoalMin, imposedThresholdSec } = buildAthleteContext(onboarding, garmin);
   const startKm = estimateStartKm(onboarding, garmin);
   const weeklyVolumes = computeWeeklyVolumes(startKm, weeksCount);
-  return buildPlanPrompt(athleteContext, weeksCount, onboarding.weeklySessions, isTrail, weeklyVolumes);
+  return {
+    prompt: buildPlanPrompt(athleteContext, weeksCount, onboarding.weeklySessions, isTrail, weeklyVolumes),
+    imposedGoalMin,
+    imposedThresholdSec,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -353,7 +361,7 @@ export async function POST(req: NextRequest) {
       : 12;
     const weeksCount = Math.max(4, Math.min(weeksUntil, 24));
 
-    const prompt = buildPrompt(onboarding, weeksCount, garmin);
+    const { prompt, imposedGoalMin, imposedThresholdSec } = buildPrompt(onboarding, weeksCount, garmin);
 
     if (preview) {
       return NextResponse.json({ prompt });
@@ -369,7 +377,7 @@ export async function POST(req: NextRequest) {
       return text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
     }
 
-    function processRaw(raw: string, sessionsPerWeek: number) {
+    function processRaw(raw: string, sessionsPerWeek: number, imposedGoalMin: number | null, imposedThresholdSec: number | null) {
       const jsonStr = stripMarkdown(raw);
       const parsedJson = JSON.parse(jsonStr) as unknown;
       let sessions: GeminiSession[];
@@ -406,7 +414,10 @@ export async function POST(req: NextRequest) {
         sessions.push(...limited);
       }
       if (geminiProfile) geminiProfile.availableDays = days;
-      console.log(`[generate-plan] enforced ${maxPerWeek} sessions/week, total: ${sessions.length}`);
+      // Override whatever Gemini computed — backend values are authoritative
+      if (geminiProfile && imposedGoalMin !== null) geminiProfile.goalTimeMin = imposedGoalMin;
+      if (geminiProfile && imposedThresholdSec !== null) geminiProfile.thresholdPaceSec = imposedThresholdSec;
+      console.log(`[generate-plan] enforced ${maxPerWeek} sessions/week, total: ${sessions.length}, goalTimeMin: ${geminiProfile?.goalTimeMin}`);
       return { sessions, goalAssessment, profile: geminiProfile };
     }
 
@@ -424,7 +435,7 @@ export async function POST(req: NextRequest) {
               controller.enqueue(sse({ text }));
             }
             try {
-              const processed = processRaw(fullText, onboarding.weeklySessions);
+              const processed = processRaw(fullText, onboarding.weeklySessions, imposedGoalMin, imposedThresholdSec);
               controller.enqueue(sse({ done: true, ...processed }));
             } catch {
               controller.enqueue(sse({ error: 'JSON mal formé — utilisation du plan de secours' }));
@@ -463,7 +474,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ sessions: null, error: `Gemini: ${msg}` });
       }
       try {
-        ({ sessions, goalAssessment, profile: geminiProfile } = processRaw(raw, onboarding.weeklySessions));
+        ({ sessions, goalAssessment, profile: geminiProfile } = processRaw(raw, onboarding.weeklySessions, imposedGoalMin, imposedThresholdSec));
         parsed = true;
         if (attempt > 1) console.log(`[generate-plan] JSON parsed on attempt ${attempt}`);
         break;
