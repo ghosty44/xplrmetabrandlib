@@ -170,14 +170,21 @@ VALEURS intensity :
 - "hill" : montées de côte${isTrail ? ' (OBLIGATOIRE dès sem.3 pour trail)' : ''}
 - "strength" : renforcement musculaire
 
+⚠️ CONTRAINTE ABSOLUE — NOMBRE DE SÉANCES : ${onboarding.weeklySessions} SÉANCES PAR SEMAINE EXACTEMENT ⚠️
+Compte les séances dans chaque semaine avant de répondre. Si une semaine a ≠ ${onboarding.weeklySessions} séances, recommence.
+Chaque semaine doit avoir EXACTEMENT ${onboarding.weeklySessions} entrées dans "sessions" avec ce numéro de semaine.
+
 RÈGLES PHYSIOLOGIQUES (non négociables) :
-1. Utilise EXCLUSIVEMENT les jours de "profile.availableDays" — exactement ${onboarding.weeklySessions} séances par semaine, jamais plus
-2. Règle 80/20 : 80% du volume en easy/long/recovery, max 20% en moderate/hard/hill
-3. Progression : jamais +10% de volume hebdo
-4. Périodisation : 3 semaines de charge + 1 semaine récupération (−15%) toutes les 4 semaines
-5. Affûtage : dernière(s) semaine(s) — réduire volume mais MAINTENIR l'intensité
-6. Chaque description donne allures exactes, durées précises, consignes d'exécution
-${isTrail ? '7. Trail : sortie longue avec D+ dès sem.2, hill réguliers, volume final > 25km D+' : ''}
+1. NOMBRE DE SÉANCES : exactement ${onboarding.weeklySessions}/semaine — ni plus, ni moins
+2. Utilise EXCLUSIVEMENT les ${onboarding.weeklySessions} jours de "profile.availableDays"
+3. Règle 80/20 : 80% du volume en easy/long/recovery, max 20% en moderate/hard/hill
+4. Progression : jamais +10% de volume hebdo
+5. Périodisation : 3 semaines de charge + 1 semaine récupération (−15%) toutes les 4 semaines
+6. Affûtage : dernière(s) semaine(s) — réduire volume mais MAINTENIR l'intensité
+7. Chaque description donne allures exactes, durées précises, consignes d'exécution
+${isTrail ? '8. Trail : sortie longue avec D+ dès sem.2, hill réguliers, volume final > 25km D+' : ''}
+
+VÉRIFICATION FINALE avant de répondre : compte le nombre de séances par semaine. Toutes les semaines = ${onboarding.weeklySessions} ? Si non, corrige.
 
 JSON uniquement, objet complet avec "profile", "goal" et "sessions". Toutes les semaines, pas de troncature.`;
 }
@@ -255,7 +262,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Enforce session count: use Gemini's days if valid, else build from weeklySessions
-    const maxPerWeek = onboarding.weeklySessions;
+    // Defensive: ensure maxPerWeek is always a valid integer (3–6). If undefined or NaN,
+    // slice(0, undefined) would return the full array — so we always clamp explicitly.
+    const maxPerWeek = Math.max(3, Math.min(6, Math.round(Number(onboarding.weeklySessions)))) || 3;
     const days = (geminiProfile?.availableDays?.length === maxPerWeek)
       ? geminiProfile.availableDays
       : buildDefaultDays(maxPerWeek);
@@ -268,9 +277,11 @@ export async function POST(req: NextRequest) {
     sessions = [];
     for (const [, ws] of byWeek) {
       const limited = ws.slice(0, maxPerWeek);
-      limited.forEach((s, i) => { s.day = days[i]; });
+      limited.forEach((s, i) => { s.day = days[i % days.length]; });
       sessions.push(...limited);
     }
+
+    console.log(`[generate-plan] enforced ${maxPerWeek} sessions/week (requested: ${onboarding.weeklySessions}), total: ${sessions.length}`);
 
     // Patch profile with enforced days
     if (geminiProfile) geminiProfile.availableDays = days;
