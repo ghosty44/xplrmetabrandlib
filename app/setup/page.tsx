@@ -614,7 +614,7 @@ function Step6TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => 
 function Step7Result({
   goalType, raceName, raceDistanceKm, raceElevationGain, raceDate,
   fitnessState, weeklySessions, image,
-  onLaunch, launching, onBack,
+  onLaunch, launching, launchStatus, onBack,
 }: {
   goalType: GoalType;
   raceName: string; raceDistanceKm: string; raceElevationGain: string; raceDate: string;
