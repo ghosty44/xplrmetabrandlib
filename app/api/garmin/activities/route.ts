@@ -137,7 +137,13 @@ export async function POST(req: NextRequest) {
       const ud = settings?.userData;
       if (ud) {
         if (typeof ud.vo2MaxRunning === 'number' && ud.vo2MaxRunning > 0) vo2Max = ud.vo2MaxRunning;
-        if (typeof ud.lactateThresholdSpeed === 'number' && ud.lactateThresholdSpeed > 0) lactateThresholdSpeedMps = ud.lactateThresholdSpeed;
+        if (typeof ud.lactateThresholdSpeed === 'number' && ud.lactateThresholdSpeed > 0) {
+          let ltSpeed = ud.lactateThresholdSpeed;
+          // Garmin sometimes returns this field in m/s × 0.1 (i.e. 10× too small).
+          // No runner has a lactate threshold below 1.5 m/s (= 11 min/km), so correct it.
+          if (ltSpeed < 1.5) ltSpeed *= 10;
+          lactateThresholdSpeedMps = ltSpeed;
+        }
         if (typeof ud.lactateThresholdHeartRate === 'number' && ud.lactateThresholdHeartRate > 0) lactateThresholdHR = ud.lactateThresholdHeartRate;
       }
     } catch { /* non-fatal: physiological data is optional */ }
