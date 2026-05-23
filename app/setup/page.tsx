@@ -9,7 +9,7 @@ import {
   saveGarminUserId, saveShoes, GarminTokens,
 } from '@/lib/store';
 import { UserProfile, TrainingPlan, Session, Shoe } from '@/lib/types';
-import type { GeminiSession } from '@/app/api/generate-plan/route';
+import type { GeminiSession, GoalAssessment } from '@/app/api/generate-plan/route';
 import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -86,6 +86,22 @@ function formatTime(min: number): string {
   const h = Math.floor(min / 60);
   const m = Math.floor(min % 60);
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:00`;
+}
+
+function parseGoalTime(raw: string): number | undefined {
+  const s = raw.trim().replace(/\s+/g, '');
+  if (!s) return undefined;
+  // e.g. "3h30", "3h30m", "3:30", "3h", "210", "45min"
+  const hm = s.match(/^(\d+)h(\d+)/i);
+  if (hm) return parseInt(hm[1]) * 60 + parseInt(hm[2]);
+  const ho = s.match(/^(\d+)h$/i);
+  if (ho) return parseInt(ho[1]) * 60;
+  const colon = s.match(/^(\d+):(\d{2})$/);
+  if (colon) return parseInt(colon[1]) * 60 + parseInt(colon[2]);
+  const minOnly = s.match(/^(\d+)min$/i);
+  if (minOnly) return parseInt(minOnly[1]);
+  const num = parseInt(s);
+  return isNaN(num) ? undefined : num;
 }
 
 function buildProfile(
@@ -443,11 +459,11 @@ function Step2Priority({ onSelect, onBack }: { onSelect: (p: 'main' | 'secondary
 // ── Step 3 — Race details ─────────────────────────────────────────────────────
 
 function Step3RaceDetails({
-  goalType, raceName, raceDate, raceDistanceKm, raceElevationGain,
+  goalType, raceName, raceDate, raceDistanceKm, raceElevationGain, raceGoalTime,
   onChange, onConfirm, onBack,
 }: {
   goalType: GoalType;
-  raceName: string; raceDate: string; raceDistanceKm: string; raceElevationGain: string;
+  raceName: string; raceDate: string; raceDistanceKm: string; raceElevationGain: string; raceGoalTime: string;
   onChange: (field: string, val: string) => void;
   onConfirm: () => void;
   onBack: () => void;
@@ -461,6 +477,7 @@ function Step3RaceDetails({
     { key: 'raceDate', label: 'DATE DE LA COURSE (OPTIONNEL)', placeholder: '', type: 'date', value: raceDate },
     { key: 'raceDistanceKm', label: 'DISTANCE (KM)', placeholder: isTrail ? '26' : '42', type: 'number', value: raceDistanceKm },
     ...(isTrail ? [{ key: 'raceElevationGain', label: 'DÉNIVELÉ POSITIF (M)', placeholder: '650', type: 'number', value: raceElevationGain }] : []),
+    { key: 'raceGoalTime', label: 'CHRONO VISÉ (OPTIONNEL)', placeholder: isTrail ? '5h30' : '3h45', type: 'text', value: raceGoalTime },
   ];
 
   return (
@@ -706,7 +723,7 @@ function Step7Result({
 
 // ── Plan preview ──────────────────────────────────────────────────────────────
 
-function PlanPreview({ plan, onConfirm, onBack }: { plan: TrainingPlan; onConfirm: () => void; onBack: () => void }) {
+function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: TrainingPlan; goalAssessment?: GoalAssessment | null; onConfirm: () => void; onBack: () => void }) {
   const p = plan.profile;
   const RACE_LABELS: Record<string, string> = { marathon: 'Marathon', halfMarathon: 'Semi-Marathon', '10k': '10 km', '5k': '5 km' };
   const totalWeeks = Math.max(0, ...plan.sessions.map(s => s.week));
@@ -714,6 +731,16 @@ function PlanPreview({ plan, onConfirm, onBack }: { plan: TrainingPlan; onConfir
   const thresholdMin = Math.floor(p.thresholdPaceSec / 60);
   const thresholdSec = p.thresholdPaceSec % 60;
   const thresholdPace = `${thresholdMin}'${thresholdSec.toString().padStart(2, '0')}''`;
+
+  const fmtMin = (min: number) => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return h > 0 ? `${h}h${m > 0 ? String(m).padStart(2, '0') : ''}` : `${m}min`;
+  };
+
+  const VERDICT_COLORS: Record<string, string> = {
+    réaliste: '#34C759', ambitieux: '#FF9500', 'sous-estimé': '#007AFF', excellent: '#C8E635',
+  };
 
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
@@ -746,6 +773,32 @@ function PlanPreview({ plan, onConfirm, onBack }: { plan: TrainingPlan; onConfir
             ))}
           </div>
         </div>
+
+        {goalAssessment && (
+          <div className="rounded-[24px] bg-white border border-black/5 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[13px] font-bold text-[#0F0F10]">Analyse de ton objectif</p>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide"
+                style={{ backgroundColor: `${VERDICT_COLORS[goalAssessment.verdict] ?? '#8E8E93'}20`, color: VERDICT_COLORS[goalAssessment.verdict] ?? '#8E8E93' }}>
+                {goalAssessment.verdict}
+              </span>
+            </div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: goalAssessment.userMin != null ? 'repeat(3,1fr)' : 'repeat(2,1fr)' }}>
+              {[
+                ...(goalAssessment.userMin != null ? [{ label: 'Ton objectif', value: fmtMin(goalAssessment.userMin), dark: false }] : []),
+                { label: 'Niveau actuel', value: fmtMin(goalAssessment.realisticMin), dark: false, muted: true },
+                { label: 'Objectif du plan', value: fmtMin(goalAssessment.achievableMin), dark: true },
+              ].map(({ label, value, dark, muted }) => (
+                <div key={label} className={`rounded-[16px] p-3 text-center ${dark ? 'bg-[#0F0F10]' : muted ? 'bg-[#F2F2F7]' : 'bg-[#F8F8F8] border border-black/5'}`}>
+                  <p className={`text-[16px] font-black tabular-nums ${dark ? 'text-white' : muted ? 'text-[#8E8E93]' : 'text-[#0F0F10]'}`}>{value}</p>
+                  <p className={`text-[9px] font-semibold uppercase tracking-[0.08em] mt-0.5 ${dark ? 'text-white/50' : 'text-[#C7C7CC]'}`}>{label}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[12px] text-[#8E8E93] leading-relaxed">{goalAssessment.message}</p>
+          </div>
+        )}
+
         <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
           <div className="px-5 py-4 border-b border-[#F2F2F7]">
             <p className="text-[13px] font-semibold text-[#0F0F10]">Aperçu du plan</p>
@@ -800,6 +853,7 @@ function ChatContent() {
   const [raceName, setRaceName] = useState('');
   const [raceDistanceKm, setRaceDistanceKm] = useState('');
   const [raceElevationGain, setRaceElevationGain] = useState('');
+  const [raceGoalTime, setRaceGoalTime] = useState('');
   const [fitnessState, setFitnessState] = useState<FitnessState | null>(null);
   const [weeklySessions, setWeeklySessions] = useState<3 | 4 | 5 | 6 | null>(null);
   const [trainingEnv, setTrainingEnv] = useState<TrainingEnv | null>(null);
@@ -807,8 +861,9 @@ function ChatContent() {
   const [launching, setLaunching] = useState(false);
   const [launchStatus, setLaunchStatus] = useState('');
   const [racePriority, setRacePriority] = useState<'main' | 'secondary' | null>(null);
+  const [goalAssessment, setGoalAssessment] = useState<GoalAssessment | null>(null);
 
-  const fetchGeminiPlan = async (profile: UserProfile, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
+  const fetchGeminiPlan = async (profile: UserProfile, garmin?: GarminActivitySummary, userGoalTimeMin?: number): Promise<TrainingPlan> => {
     setLaunchStatus('Gemini construit tes séances…');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 50_000);
@@ -816,11 +871,12 @@ function ChatContent() {
       const res = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile, garmin }),
+        body: JSON.stringify({ profile, garmin, userGoalTimeMin }),
         signal: controller.signal,
       });
-      const data = await res.json() as { sessions?: GeminiSession[]; error?: string };
+      const data = await res.json() as { sessions?: GeminiSession[]; goalAssessment?: GoalAssessment; error?: string };
       if (data.sessions?.length) {
+        if (data.goalAssessment) setGoalAssessment(data.goalAssessment);
         return buildPlanFromGeminiSessions(profile, data.sessions);
       }
       console.warn('[generate-plan] fallback to algo:', data.error);
@@ -860,7 +916,8 @@ function ChatContent() {
       );
 
       // 3. Generate plan sessions with Gemini + Garmin data
-      const plan = await fetchGeminiPlan(profile, garmin);
+      const userGoalTimeMin = parseGoalTime(raceGoalTime);
+      const plan = await fetchGeminiPlan(profile, garmin, userGoalTimeMin);
       setGeneratedPlan(plan);
       setPhase('preview');
     } catch (err) {
@@ -1053,11 +1110,13 @@ function ChatContent() {
       goalType={goalType ?? 'road'}
       raceName={raceName} raceDate={raceDate}
       raceDistanceKm={raceDistanceKm} raceElevationGain={raceElevationGain}
+      raceGoalTime={raceGoalTime}
       onChange={(field, val) => {
         if (field === 'raceName') setRaceName(val);
         else if (field === 'raceDate') setRaceDate(val);
         else if (field === 'raceDistanceKm') setRaceDistanceKm(val);
         else if (field === 'raceElevationGain') setRaceElevationGain(val);
+        else if (field === 'raceGoalTime') setRaceGoalTime(val);
       }}
       onConfirm={() => setPhase('step4')}
       onBack={() => setPhase('step2')}
@@ -1101,7 +1160,7 @@ function ChatContent() {
   );
 
   if (phase === 'preview' && generatedPlan) return (
-    <PlanPreview plan={generatedPlan} onConfirm={handleConfirmPlan} onBack={() => setPhase('step7')} />
+    <PlanPreview plan={generatedPlan} goalAssessment={goalAssessment} onConfirm={handleConfirmPlan} onBack={() => setPhase('step7')} />
   );
 
   // ── Resumed chat phase ─────────────────────────────────────────────────────

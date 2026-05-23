@@ -16,6 +16,14 @@ export interface GeminiSession {
   description: string;
 }
 
+export interface GoalAssessment {
+  userMin: number | null;
+  realisticMin: number;
+  achievableMin: number;
+  verdict: 'réaliste' | 'ambitieux' | 'sous-estimé' | 'excellent';
+  message: string;
+}
+
 const DAYS_FR = ['', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const RACE_KM: Record<string, number> = { marathon: 42.195, halfMarathon: 21.1, '10k': 10, '5k': 5 };
 
@@ -66,7 +74,7 @@ function buildGarminSection(summary: GarminActivitySummary): string {
   return lines.join('\n');
 }
 
-function buildPrompt(profile: UserProfile, weeksCount: number, garmin?: GarminActivitySummary): string {
+function buildPrompt(profile: UserProfile, weeksCount: number, garmin?: GarminActivitySummary, userGoalTimeMin?: number): string {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const distKm = RACE_KM[profile.goalRace] ?? 10;
   const isTrail = profile.terrain === 'trail';
@@ -76,12 +84,16 @@ function buildPrompt(profile: UserProfile, weeksCount: number, garmin?: GarminAc
   const seuilPace = fmtPace(profile.thresholdPaceSec ?? 300);
   const vmaPace = fmtPace(Math.round((profile.thresholdPaceSec ?? 300) * 0.85));
 
+  const goalSection = userGoalTimeMin
+    ? `- Chrono VISÉ par l'athlète : ${userGoalTimeMin}min (${Math.floor(userGoalTimeMin / 60)}h${userGoalTimeMin % 60 > 0 ? String(userGoalTimeMin % 60).padStart(2, '0') + 'min' : ''})`
+    : `- Chrono cible (estimé par l'app) : ${profile.goalTimeMin}min`;
+
   return `Date du jour : ${today}
 
 PROFIL ATHLÈTE :
 - Objectif : ${profile.goalRace} · ${distKm}km${isTrail ? ' TRAIL' : ''} · terrain ${profile.terrain ?? 'flat'}
 - Date de course : ${profile.goalDate}
-- Chrono cible : ${profile.goalTimeMin}min (${Math.floor(profile.goalTimeMin / 60)}h${profile.goalTimeMin % 60}min)
+${goalSection}
 - Allures de référence : EF ${easyPace} | Seuil ${seuilPace} | VMA ${vmaPace}
 - Volume actuel (estimé) : ${profile.weeklyKm}km/semaine
 - Jours disponibles : ${daysStr}
@@ -89,10 +101,15 @@ PROFIL ATHLÈTE :
 
 MISSION : Génère un plan d'entraînement COMPLET de ${weeksCount} semaines menant à la course.
 
-FORMAT DE RÉPONSE : Tableau JSON UNIQUEMENT, aucun texte avant ou après, aucun markdown.
-Exemple :
-[{"week":1,"day":2,"name":"Endurance fondamentale","totalMin":45,"km":7,"intensity":"easy","description":"45min à allure ${easyPace}, conversation facile pendant toute la sortie. Concentration sur la respiration nasale."},
-{"week":1,"day":4,"name":"Tempo","totalMin":50,"km":9,"intensity":"moderate","description":"15min échauffement progressif + 20min à allure seuil ${seuilPace} (effort soutenu mais contrôlé, souffle court) + 15min retour au calme."}]
+FORMAT DE RÉPONSE : Objet JSON UNIQUEMENT, aucun texte avant ou après, aucun markdown.
+Structure exacte :
+{"goal":{"userMin":${userGoalTimeMin ?? 'null'},"realisticMin":<estimation coach en minutes>,"achievableMin":<objectif du plan en minutes>,"verdict":"réaliste"|"ambitieux"|"sous-estimé"|"excellent","message":"<2-3 phrases : analyse le chrono visé vs données réelles, explique l'estimation, annonce l'objectif du plan>"},"sessions":[{"week":1,"day":2,"name":"Endurance fondamentale","totalMin":45,"km":7,"intensity":"easy","description":"45min à allure ${easyPace}..."},...]}
+
+ANALYSE OBJECTIF (champ "goal") :
+- realisticMin : chrono réaliste AUJOURD'HUI selon données Garmin/profil (sans entraînement)
+- achievableMin : chrono visé par ce plan (ambitieux mais atteignable après ${weeksCount} semaines)
+- verdict : "réaliste" si userMin proche de realisticMin (±5%), "ambitieux" si userMin < realisticMin de plus de 5%, "sous-estimé" si userMin > realisticMin de plus de 10%, "excellent" si l'athlète peut viser mieux que son objectif
+- message : analyse bienveillante, factuelle, en français, qui motive
 
 VALEURS intensity :
 - "easy" : endurance fondamentale zone 2, allure ${easyPace}
@@ -113,7 +130,7 @@ RÈGLES PHYSIOLOGIQUES (non négociables) :
 ${isTrail ? '7. Trail : sortie longue avec dénivelé dès sem.2, montées de côte (hill) régulières, volume final > 25km D+' : ''}
 ${(profile.strengthPerWeek ?? 0) > 0 ? `${isTrail ? '8' : '7'}. Ajouter ${profile.strengthPerWeek} séance(s) strength/semaine avec exercices spécifiques coureur` : ''}
 
-JSON uniquement, tableau complet, toutes les semaines. Pas de troncature.`;
+JSON uniquement, objet complet avec "goal" et "sessions", toutes les semaines. Pas de troncature.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -123,11 +140,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Clé API Gemini manquante' });
     }
 
-    let body: { profile?: UserProfile; garmin?: GarminActivitySummary };
+    let body: { profile?: UserProfile; garmin?: GarminActivitySummary; userGoalTimeMin?: number };
     try { body = await req.json() as typeof body; }
     catch { return NextResponse.json({ sessions: null, error: 'Corps de requête invalide' }); }
 
-    const { profile, garmin } = body;
+    const { profile, garmin, userGoalTimeMin } = body;
     if (!profile?.goalDate || !profile?.thresholdPaceSec) {
       return NextResponse.json({ sessions: null, error: 'Profil incomplet' });
     }
@@ -143,7 +160,7 @@ export async function POST(req: NextRequest) {
       generationConfig: { temperature: 0.7 },
     });
 
-    const prompt = buildPrompt(profile, weeksCount, garmin);
+    const prompt = buildPrompt(profile, weeksCount, garmin, userGoalTimeMin);
 
     let raw: string;
     try {
@@ -161,10 +178,19 @@ export async function POST(req: NextRequest) {
       .trim();
 
     let sessions: GeminiSession[];
+    let goalAssessment: GoalAssessment | null = null;
     try {
       const parsed = JSON.parse(jsonStr) as unknown;
-      if (!Array.isArray(parsed)) throw new Error('Not an array');
-      sessions = parsed as GeminiSession[];
+      if (Array.isArray(parsed)) {
+        // Legacy format: bare array
+        sessions = parsed as GeminiSession[];
+      } else if (parsed && typeof parsed === 'object' && 'sessions' in parsed) {
+        const obj = parsed as { goal?: GoalAssessment; sessions: GeminiSession[] };
+        sessions = obj.sessions ?? [];
+        goalAssessment = obj.goal ?? null;
+      } else {
+        throw new Error('Unexpected format');
+      }
     } catch {
       console.error('[/api/generate-plan] JSON parse failed. Raw:', raw.slice(0, 300));
       return NextResponse.json({ sessions: null, error: 'Réponse Gemini invalide (JSON mal formé)' });
@@ -180,7 +206,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Aucune séance valide reçue de Gemini' });
     }
 
-    return NextResponse.json({ sessions });
+    return NextResponse.json({ sessions, goalAssessment });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erreur inconnue';
     console.error('[/api/generate-plan] unhandled:', msg);
