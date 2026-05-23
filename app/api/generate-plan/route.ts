@@ -271,25 +271,16 @@ export async function POST(req: NextRequest) {
 
     const prompt = buildPrompt(onboarding, weeksCount, garmin);
 
-    let raw: string;
-    try {
-      const result = await model.generateContent(prompt);
-      raw = result.response.text().trim();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erreur Gemini';
-      return NextResponse.json({ sessions: null, error: `Gemini: ${msg}` });
+    function stripMarkdown(text: string): string {
+      return text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
     }
 
-    const jsonStr = raw
-      .replace(/^```(?:json)?\s*\n?/, '')
-      .replace(/\n?```\s*$/, '')
-      .trim();
-
-    let sessions: GeminiSession[];
-    let goalAssessment: GoalAssessment | null = null;
-    let geminiProfile: UserProfile | null = null;
-    try {
+    function parseGeminiResponse(raw: string): { sessions: GeminiSession[]; goalAssessment: GoalAssessment | null; geminiProfile: UserProfile | null } {
+      const jsonStr = stripMarkdown(raw);
       const parsed = JSON.parse(jsonStr) as unknown;
+      let sessions: GeminiSession[];
+      let goalAssessment: GoalAssessment | null = null;
+      let geminiProfile: UserProfile | null = null;
       if (Array.isArray(parsed)) {
         sessions = parsed as GeminiSession[];
       } else if (parsed && typeof parsed === 'object' && 'sessions' in parsed) {
@@ -300,8 +291,38 @@ export async function POST(req: NextRequest) {
       } else {
         throw new Error('Format inattendu');
       }
-    } catch {
-      console.error('[/api/generate-plan] JSON parse failed. Raw:', raw.slice(0, 300));
+      return { sessions, goalAssessment, geminiProfile };
+    }
+
+    let sessions: GeminiSession[] = [];
+    let goalAssessment: GoalAssessment | null = null;
+    let geminiProfile: UserProfile | null = null;
+
+    const MAX_ATTEMPTS = 3;
+    let lastRaw = '';
+    let parsed = false;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let raw: string;
+      try {
+        const result = await model.generateContent(prompt);
+        raw = result.response.text().trim();
+        lastRaw = raw;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erreur Gemini';
+        return NextResponse.json({ sessions: null, error: `Gemini: ${msg}` });
+      }
+      try {
+        ({ sessions, goalAssessment, geminiProfile } = parseGeminiResponse(raw));
+        parsed = true;
+        if (attempt > 1) console.log(`[generate-plan] JSON parsed on attempt ${attempt}`);
+        break;
+      } catch {
+        console.warn(`[generate-plan] JSON parse failed (attempt ${attempt}/${MAX_ATTEMPTS}). Raw:`, raw.slice(0, 200));
+      }
+    }
+
+    if (!parsed) {
+      console.error('[generate-plan] All attempts failed. Last raw:', lastRaw.slice(0, 300));
       return NextResponse.json({ sessions: null, error: 'Réponse Gemini invalide (JSON mal formé)' });
     }
 
