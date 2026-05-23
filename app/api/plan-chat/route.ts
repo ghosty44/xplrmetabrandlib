@@ -18,7 +18,7 @@ function formatPlanForPrompt(plan: TrainingPlan): string {
     `PROFIL :`,
     `- Objectif : ${p.goalRace} · ${p.goalDate}`,
     `- Chrono cible : ${Math.floor(p.goalTimeMin / 60)}h${p.goalTimeMin % 60 > 0 ? String(p.goalTimeMin % 60).padStart(2, '0') : ''}`,
-    `- Allure seuil : ${fmtSec(p.thresholdPaceSec)}/km`,
+    `- Allure seuil : ${fmtSec(p.thresholdPaceSec)}/km (source : ${p.thresholdSource === 'garmin' ? 'mesure Garmin seuil lactique — valeur réelle, ne pas remettre en question' : 'estimation backend — calculée à partir du chrono cible'})`,
     `- Volume hebdo : ${p.weeklyKm} km/sem`,
     `- Terrain : ${p.terrain ?? 'flat'}`,
     `- Jours d'entraînement : ${(p.availableDays ?? []).map(d => DAY_NAMES[d]).join(', ')} (${p.availableDays?.length ?? 3} séances/sem)`,

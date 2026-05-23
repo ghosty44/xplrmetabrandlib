@@ -1095,7 +1095,7 @@ function PlanPreview({
                 <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em] mb-3">Calcul du temps cible</p>
                 <div className="space-y-2">
                   {[
-                    { label: 'Allure au seuil lactique', value: fmtPace(p.thresholdPaceSec) + ' /km', sub: 'Source : Garmin / estimation' },
+                    { label: 'Allure au seuil lactique', value: fmtPace(p.thresholdPaceSec) + ' /km', sub: p.thresholdSource === 'garmin' ? 'Mesuré par Garmin Connect (seuil lactique réel)' : 'Estimé par le backend (chrono cible)' },
                     { label: `Facteur ${RACE_LABELS[p.goalRace] ?? p.goalRace}`, value: RACE_FACTOR_DESC[p.goalRace] ?? `× ${factor}`, sub: null },
                     { label: 'Allure course cible', value: fmtPace(racePaceSec) + ' /km', sub: null },
                     { label: `${RACE_LABELS[p.goalRace] ?? ''} × ${dist} km ÷ 60`, value: fmtMin(computedGoalMin), accent: true, sub: null },

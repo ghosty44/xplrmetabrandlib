@@ -53,6 +53,7 @@ export type UserProfile = {
   goalTimeMin: number; // en minutes
   weeklyKm: number;
   thresholdPaceSec: number; // secondes/km au seuil
+  thresholdSource?: 'garmin' | 'estimated'; // origine de la valeur seuil
   maxHR?: number; // fréquence cardiaque maximale (bpm)
   availableDays?: number[]; // 1=Lundi...7=Dimanche, ex: [2,4,6,7]
   weeklySessionsPerWeek?: number;

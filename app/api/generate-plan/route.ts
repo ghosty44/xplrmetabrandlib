@@ -437,6 +437,7 @@ export async function POST(req: NextRequest) {
       // Override whatever Gemini computed — backend values are authoritative
       if (geminiProfile && imposedGoalMin !== null) geminiProfile.goalTimeMin = imposedGoalMin;
       if (geminiProfile && imposedThresholdSec !== null) geminiProfile.thresholdPaceSec = imposedThresholdSec;
+      if (geminiProfile) geminiProfile.thresholdSource = imposedThresholdSec !== null ? 'garmin' : 'estimated';
       console.log(`[generate-plan] enforced ${maxRunPerWeek} run + ${maxStrengthPerWeek} strength/week, total: ${sessions.length}, goalTimeMin: ${geminiProfile?.goalTimeMin}`);
       return { sessions, goalAssessment, profile: geminiProfile };
     }
