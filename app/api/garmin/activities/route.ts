@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { GarminTokens } from '@/lib/store';
 
+export const maxDuration = 60;
+
 interface RawActivity {
   activityId?: number;
   startTimeLocal?: string;

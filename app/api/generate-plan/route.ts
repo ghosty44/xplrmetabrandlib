@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UserProfile } from '@/lib/types';
 import type { GarminActivitySummary, RunActivity } from '@/app/api/garmin/activities/route';
 
+// Extend Vercel function timeout (requires Pro plan — on Hobby falls back to 10s)
+export const maxDuration = 60;
+
 export interface GeminiSession {
   week: number;
   day: number;

@@ -810,17 +810,26 @@ function ChatContent() {
 
   const fetchGeminiPlan = async (profile: UserProfile, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
     setLaunchStatus('Gemini construit tes séances…');
-    const res = await fetch('/api/generate-plan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, garmin }),
-    });
-    const data = await res.json() as { sessions?: GeminiSession[]; error?: string };
-    if (data.sessions?.length) {
-      return buildPlanFromGeminiSessions(profile, data.sessions);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 50_000);
+    try {
+      const res = await fetch('/api/generate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile, garmin }),
+        signal: controller.signal,
+      });
+      const data = await res.json() as { sessions?: GeminiSession[]; error?: string };
+      if (data.sessions?.length) {
+        return buildPlanFromGeminiSessions(profile, data.sessions);
+      }
+      console.warn('[generate-plan] fallback to algo:', data.error);
+    } catch (err) {
+      console.warn('[generate-plan] timeout or network error:', err);
+    } finally {
+      clearTimeout(timeout);
     }
     // Fallback: local algo
-    console.warn('[generate-plan] fallback to algo:', data.error);
     try { return generatePlan(profile); }
     catch { return { id: `plan_${Date.now()}`, createdAt: new Date().toISOString(), profile, sessions: [] }; }
   };
@@ -844,26 +853,13 @@ function ChatContent() {
         } catch { /* non-fatal */ }
       }
 
-      // 2. Get profile from Gemini (chat with hidden context)
-      setLaunchStatus('Gemini analyse ton profil…');
-      const context = buildOnboardingContext(
-        goalType ?? 'road', raceName, raceDate, raceDistanceKm, raceElevationGain,
-        racePriority, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat',
+      // 2. Build profile from form data (no extra LLM call needed)
+      const profile = buildProfile(
+        goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain,
+        fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat',
       );
-      const welcome: ChatMessage = { role: 'model', content: 'Bonjour ! Je suis ton coach RunAI.' };
-      const ctxMsg: ChatMessage = { role: 'user', content: context, hidden: true };
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [welcome, ctxMsg] }),
-      });
-      const data = await res.json() as { profile?: UserProfile };
-
-      const profile = data.profile
-        ?? buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat');
-
-      // 3. Generate plan with Garmin data
+      // 3. Generate plan sessions with Gemini + Garmin data
       const plan = await fetchGeminiPlan(profile, garmin);
       setGeneratedPlan(plan);
       setPhase('preview');
