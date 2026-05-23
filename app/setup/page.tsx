@@ -47,7 +47,12 @@ function getQuickReplies(lastBotMsg: string, allMessages: ChatMessage[]): string
     return ['0 séance', '1 séance/semaine', '2 séances/semaine'];
   }
   if (m.includes('jours') || m.includes('disponible') || (m.includes('semaine') && m.includes('courir'))) {
-    return ['Mar · Jeu · Sam · Dim', 'Lun · Mer · Ven · Sam', 'Mar · Jeu · Sam', 'Lun · Mer · Sam'];
+    const sessionMatch = userMsgs.join(' ').match(/(\d+)\s*séance/);
+    const n = sessionMatch ? parseInt(sessionMatch[1]) : 4;
+    if (n <= 3) return ['Mar · Jeu · Sam', 'Lun · Mer · Sam', 'Mer · Ven · Dim', 'Lun · Jeu · Sam'];
+    if (n === 5) return ['Lun · Mar · Jeu · Sam · Dim', 'Lun · Mer · Jeu · Ven · Sam', 'Mar · Mer · Jeu · Sam · Dim'];
+    if (n >= 6) return ['Lun · Mar · Mer · Jeu · Ven · Sam', 'Lun · Mar · Jeu · Ven · Sam · Dim'];
+    return ['Mar · Jeu · Sam · Dim', 'Lun · Mer · Ven · Sam', 'Mar · Jeu · Ven · Dim', 'Lun · Mer · Sam · Dim'];
   }
   if (m.includes('km/semaine') || m.includes('kilomètres par semaine') || m.includes('volume') || m.includes('actuellement')) {
     return ['20 km/sem · 3 séances', '35 km/sem · 4 séances', '50 km/sem · 5 séances', '65 km/sem · 6 séances'];
