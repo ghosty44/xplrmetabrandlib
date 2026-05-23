@@ -1,10 +1,22 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextRequest, NextResponse } from 'next/server';
-import { UserProfile } from '@/lib/types';
-import type { GarminActivitySummary, RunActivity } from '@/app/api/garmin/activities/route';
+import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
+import type { UserProfile } from '@/lib/types';
 
-// Extend Vercel function timeout (requires Pro plan — on Hobby falls back to 10s)
 export const maxDuration = 60;
+
+export interface OnboardingData {
+  goalType: 'road' | 'trail' | 'beginner' | 'injury' | 'test';
+  raceName?: string;
+  raceDate?: string;
+  raceDistanceKm?: string;
+  raceElevationGain?: string;
+  racePriority?: 'main' | 'secondary';
+  fitnessState: 'active' | 'break2w' | 'break3w' | 'break1m';
+  weeklySessions: 3 | 4 | 5 | 6;
+  trainingEnv: 'flat' | 'bump' | 'hill' | 'mountain' | 'cols';
+  raceGoalTime?: string;
+}
 
 export interface GeminiSession {
   week: number;
@@ -24,26 +36,13 @@ export interface GoalAssessment {
   message: string;
 }
 
-const DAYS_FR = ['', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-const RACE_KM: Record<string, number> = { marathon: 42.195, halfMarathon: 21.1, '10k': 10, '5k': 5 };
-
-function taperWeeks(race: string): number {
-  if (race === 'marathon') return 3;
-  if (race === 'halfMarathon') return 2;
-  return 1;
-}
-
-function fmtPace(sec: number): string {
-  return `${Math.floor(sec / 60)}'${(sec % 60).toString().padStart(2, '0')}''/km`;
-}
-
 function fmtPaceSec(sec: number): string {
   if (!sec) return '?';
   return `${Math.floor(sec / 60)}'${(sec % 60).toString().padStart(2, '0')}''/km`;
 }
 
 function buildGarminSection(summary: GarminActivitySummary): string {
-  const fmtPaceFromMps = (mps: number) => {
+  const fmtMps = (mps: number) => {
     const sec = Math.round(1000 / mps);
     return `${Math.floor(sec / 60)}'${String(sec % 60).padStart(2, '0')}''/km`;
   };
@@ -51,16 +50,16 @@ function buildGarminSection(summary: GarminActivitySummary): string {
   const lines: string[] = [
     '',
     '═══════════════════════════════════════',
-    'DONNÉES GARMIN RÉELLES (ne pas ignorer)',
+    'DONNÉES GARMIN RÉELLES',
     '═══════════════════════════════════════',
     ...(summary.vo2Max ? [`VO2max : ${summary.vo2Max} ml/kg/min`] : []),
-    ...(summary.lactateThresholdSpeedMps ? [`Allure seuil lactique : ${fmtPaceFromMps(summary.lactateThresholdSpeedMps)}`] : []),
+    ...(summary.lactateThresholdSpeedMps ? [`Allure seuil lactique : ${fmtMps(summary.lactateThresholdSpeedMps)}`] : []),
     ...(summary.lactateThresholdHR ? [`FC seuil lactique : ${summary.lactateThresholdHR} bpm`] : []),
     `Volume moyen 4 semaines : ${summary.weeklyKm4w} km/semaine`,
     `Volume moyen 8 semaines : ${summary.weeklyKm8w} km/semaine`,
     `Sortie longue max (8 sem) : ${summary.longestRunKm} km`,
-    `Séances/semaine moyenne  : ${summary.avgSessionsPerWeek}`,
-    `Allure moyenne récente   : ${fmtPaceSec(summary.recentAvgPaceSecKm)}`,
+    `Séances/semaine réelles   : ${summary.avgSessionsPerWeek}`,
+    `Allure moyenne récente    : ${fmtPaceSec(summary.recentAvgPaceSecKm)}`,
     '',
     `Dernières sorties (${summary.runs.length}) :`,
   ];
@@ -75,70 +74,112 @@ function buildGarminSection(summary: GarminActivitySummary): string {
 
   lines.push(
     '',
-    '→ Utilise ces données RÉELLES pour calibrer le VOLUME hebdo, les ALLURES et la PROGRESSION.',
-    '→ Les données Garmin corrigent uniquement les allures et le volume — PAS le nombre de séances ni les jours disponibles.',
+    '→ Priorité absolue : utilise ces données pour calibrer TOUTES les allures, le volume et la progression.',
+    '→ Ces données corrigent uniquement les allures/volume — PAS le nombre de séances par semaine.',
     '═══════════════════════════════════════',
   );
   return lines.join('\n');
 }
 
-function buildPrompt(profile: UserProfile, weeksCount: number, garmin?: GarminActivitySummary, userGoalTimeMin?: number): string {
+function buildPrompt(onboarding: OnboardingData, weeksCount: number, garmin?: GarminActivitySummary): string {
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const distKm = RACE_KM[profile.goalRace] ?? 10;
-  const isTrail = profile.terrain === 'trail';
-  const daysStr = (profile.availableDays ?? [2, 4, 6]).map(d => `${DAYS_FR[d]}(${d})`).join(', ');
-  const taper = taperWeeks(profile.goalRace);
-  const easyPace = fmtPace(Math.round((profile.thresholdPaceSec ?? 300) * 1.2));
-  const seuilPace = fmtPace(profile.thresholdPaceSec ?? 300);
-  const vmaPace = fmtPace(Math.round((profile.thresholdPaceSec ?? 300) * 0.85));
 
-  const goalSection = userGoalTimeMin
-    ? `- Chrono VISÉ par l'athlète : ${userGoalTimeMin}min (${Math.floor(userGoalTimeMin / 60)}h${userGoalTimeMin % 60 > 0 ? String(userGoalTimeMin % 60).padStart(2, '0') + 'min' : ''})`
-    : `- Chrono cible (estimé par l'app) : ${profile.goalTimeMin}min`;
+  const FITNESS_LABELS: Record<string, string> = {
+    active: 'court régulièrement, sans interruption récente',
+    break2w: 'pause de 2 à 3 semaines récemment',
+    break3w: 'pause de 3 à 4 semaines récemment',
+    break1m: "pause de plus d'un mois",
+  };
+  const ENV_LABELS: Record<string, string> = {
+    flat: 'terrain plat uniquement',
+    bump: 'petites bosses, montées < 2 min',
+    hill: 'collines, montées 2-4 min',
+    mountain: 'petite montagne, montées 4-6 min',
+    cols: 'longs cols, montées prolongées',
+  };
+  const GOAL_LABELS: Record<string, string> = {
+    road: 'course sur route', trail: 'trail', beginner: 'programme débutant',
+    injury: 'reprise après blessure', test: 'test de niveau',
+  };
+
+  const isTrail = onboarding.goalType === 'trail';
+  const dist = parseFloat(onboarding.raceDistanceKm ?? '0');
+  const elev = parseFloat(onboarding.raceElevationGain ?? '0');
 
   return `Date du jour : ${today}
 
-PROFIL ATHLÈTE :
-- Objectif : ${profile.goalRace} · ${distKm}km${isTrail ? ' TRAIL' : ''} · terrain ${profile.terrain ?? 'flat'}
-- Date de course : ${profile.goalDate}
-${goalSection}
-- Allures de référence : EF ${easyPace} | Seuil ${seuilPace} | VMA ${vmaPace}
-- Volume actuel (estimé) : ${profile.weeklyKm}km/semaine
-- Jours disponibles : ${daysStr}
-- Renforcement : ${profile.strengthPerWeek ?? 0} séance(s)/semaine${profile.elevationGainPerRace ? `\n- Dénivelé course : ${profile.elevationGainPerRace}m D+` : ''}${garmin ? buildGarminSection(garmin) : ''}
+RÉPONSES BRUTES DE L'ATHLÈTE :
+- Type d'objectif : ${GOAL_LABELS[onboarding.goalType]}
+${onboarding.raceName ? `- Nom de la course : ${onboarding.raceName}` : ''}
+${dist > 0 ? `- Distance : ${dist} km` : ''}
+${isTrail && elev > 0 ? `- Dénivelé positif : ${elev} m D+` : ''}
+${onboarding.raceDate ? `- Date de la course : ${onboarding.raceDate}` : ''}
+${onboarding.racePriority ? `- Priorité : ${onboarding.racePriority === 'main' ? 'objectif principal' : 'objectif secondaire'}` : ''}
+${onboarding.raceGoalTime ? `- Chrono visé par l'athlète : ${onboarding.raceGoalTime}` : ''}
+- État de forme : ${FITNESS_LABELS[onboarding.fitnessState]}
+- Séances souhaitées : ${onboarding.weeklySessions} par semaine
+- Terrain d'entraînement disponible : ${ENV_LABELS[onboarding.trainingEnv]}
+- Blessures récentes : aucune signalée
+- Renforcement musculaire : 0 séance/semaine${garmin ? buildGarminSection(garmin) : ''}
 
-MISSION : Génère un plan d'entraînement COMPLET de ${weeksCount} semaines menant à la course.
+MISSION : Génère un plan d'entraînement COMPLET de ${weeksCount} semaines.
 
 FORMAT DE RÉPONSE : Objet JSON UNIQUEMENT, aucun texte avant ou après, aucun markdown.
 Structure exacte :
-{"goal":{"userMin":${userGoalTimeMin ?? 'null'},"realisticMin":<estimation coach en minutes>,"achievableMin":<objectif du plan en minutes>,"verdict":"réaliste"|"ambitieux"|"sous-estimé"|"excellent","message":"<2-3 phrases : analyse le chrono visé vs données réelles, explique l'estimation, annonce l'objectif du plan>"},"sessions":[{"week":1,"day":2,"name":"Endurance fondamentale","totalMin":45,"km":7,"intensity":"easy","description":"45min à allure ${easyPace}..."},...]}
+{
+  "profile": {
+    "goalRace": "marathon"|"halfMarathon"|"10k"|"5k",
+    "goalDate": "YYYY-MM-DD",
+    "goalTimeMin": <chrono cible du plan en minutes entières>,
+    "weeklyKm": <volume hebdo estimé en km>,
+    "thresholdPaceSec": <allure seuil en secondes/km>,
+    "availableDays": [<tableau de ${onboarding.weeklySessions} jours optimaux, 1=Lun...7=Dim, espacés pour la récupération>],
+    "terrain": "flat"|"hilly"|"trail"${isTrail ? ',\n    "elevationGainPerRace": ' + (elev > 0 ? elev : '<D+ estimé>') : ''}
+  },
+  "goal": {
+    "userMin": ${onboarding.raceGoalTime ? '<chrono visé en minutes, converti>' : 'null'},
+    "realisticMin": <chrono réaliste AUJOURD'HUI sans entraînement supplémentaire>,
+    "achievableMin": <chrono atteignable après ${weeksCount} semaines de ce plan>,
+    "verdict": "réaliste"|"ambitieux"|"sous-estimé"|"excellent",
+    "message": "<2-3 phrases bienveillantes analysant l'objectif>"
+  },
+  "sessions": [
+    {"week":1,"day":2,"name":"...","totalMin":45,"km":7,"intensity":"easy","description":"..."},
+    ...
+  ]
+}
+
+CALCUL DU PROFIL (champ "profile") :
+- goalRace : pour trail, mappe la distance → "5k" (<15km), "halfMarathon" (15-34km), "marathon" (≥35km)
+- goalTimeMin : estime un chrono réaliste après ce plan (tiens compte des données Garmin en priorité)
+- thresholdPaceSec : déduit de goalTimeMin et de la distance via formule physiologique (≈ pace race × 0.92)
+- availableDays : exactement ${onboarding.weeklySessions} jours, bien répartis pour la récupération (ex: [2,4,6] ou [1,3,5,7])
+- weeklyKm : volume de départ cohérent avec l'état de forme et les données Garmin réelles
 
 ANALYSE OBJECTIF (champ "goal") :
-- realisticMin : chrono réaliste AUJOURD'HUI selon données Garmin/profil (sans entraînement)
-- achievableMin : chrono visé par ce plan (ambitieux mais atteignable après ${weeksCount} semaines)
-- verdict : "réaliste" si userMin proche de realisticMin (±5%), "ambitieux" si userMin < realisticMin de plus de 5%, "sous-estimé" si userMin > realisticMin de plus de 10%, "excellent" si l'athlète peut viser mieux que son objectif
-- message : analyse bienveillante, factuelle, en français, qui motive
+- realisticMin : niveau ACTUEL de l'athlète (aujourd'hui, sans entraînement supplémentaire)
+- achievableMin : objectif du plan après ${weeksCount} semaines
+- verdict : "réaliste" si chrono visé ≈ niveau actuel (±5%), "ambitieux" si visé < actuel de >5%, "sous-estimé" si visé > actuel de >10%, "excellent" si l'athlète peut viser encore mieux
 
 VALEURS intensity :
-- "easy" : endurance fondamentale zone 2, allure ${easyPace}
-- "moderate" : tempo/seuil zone 3, allure ${seuilPace}
-- "hard" : intervalles VMA zone 4-5, allure ${vmaPace}
+- "easy" : endurance fondamentale zone 2
+- "moderate" : tempo / seuil zone 3
+- "hard" : intervalles VMA zone 4-5
 - "long" : sortie longue zone 2 (durée +25% vs sortie normale)
-- "recovery" : décrassage très léger, allure libre très lente
-- "hill" : montées de côte spécifiques${isTrail ? ' (OBLIGATOIRE dès sem.3 pour trail)' : ''}
-- "strength" : renforcement musculaire (gainage, squats, fentes, mollets)
+- "recovery" : décrassage léger
+- "hill" : montées de côte${isTrail ? ' (OBLIGATOIRE dès sem.3 pour trail)' : ''}
+- "strength" : renforcement musculaire
 
 RÈGLES PHYSIOLOGIQUES (non négociables) :
-1. Utilise EXCLUSIVEMENT les jours ${JSON.stringify(profile.availableDays ?? [2, 4, 6])} — exactement ${profile.availableDays?.length ?? 3} séance(s) de course par semaine, jamais plus, jamais moins. Les données Garmin n'autorisent PAS à ajouter des jours supplémentaires.
-2. Règle 80/20 : 80% du volume total en easy/long/recovery, max 20% en moderate/hard/hill
+1. Utilise EXCLUSIVEMENT les jours de "profile.availableDays" — exactement ${onboarding.weeklySessions} séances par semaine, jamais plus
+2. Règle 80/20 : 80% du volume en easy/long/recovery, max 20% en moderate/hard/hill
 3. Progression : jamais +10% de volume hebdo
-4. Périodisation : 3 semaines de charge + 1 semaine récupération (−15 à −20%) toutes les 4 semaines
-5. Affûtage : ${taper} dernière(s) semaine(s) — réduire volume mais MAINTENIR l'intensité
-6. Chaque description doit donner les allures exactes, durées précises et consignes d'exécution
-${isTrail ? '7. Trail : sortie longue avec dénivelé dès sem.2, montées de côte (hill) régulières, volume final > 25km D+' : ''}
-${(profile.strengthPerWeek ?? 0) > 0 ? `${isTrail ? '8' : '7'}. Ajouter ${profile.strengthPerWeek} séance(s) strength/semaine avec exercices spécifiques coureur` : ''}
+4. Périodisation : 3 semaines de charge + 1 semaine récupération (−15%) toutes les 4 semaines
+5. Affûtage : dernière(s) semaine(s) — réduire volume mais MAINTENIR l'intensité
+6. Chaque description donne allures exactes, durées précises, consignes d'exécution
+${isTrail ? '7. Trail : sortie longue avec D+ dès sem.2, hill réguliers, volume final > 25km D+' : ''}
 
-JSON uniquement, objet complet avec "goal" et "sessions", toutes les semaines. Pas de troncature.`;
+JSON uniquement, objet complet avec "profile", "goal" et "sessions". Toutes les semaines, pas de troncature.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -148,18 +189,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Clé API Gemini manquante' });
     }
 
-    let body: { profile?: UserProfile; garmin?: GarminActivitySummary; userGoalTimeMin?: number };
+    let body: { onboarding?: OnboardingData; garmin?: GarminActivitySummary };
     try { body = await req.json() as typeof body; }
     catch { return NextResponse.json({ sessions: null, error: 'Corps de requête invalide' }); }
 
-    const { profile, garmin, userGoalTimeMin } = body;
-    if (!profile?.goalDate || !profile?.thresholdPaceSec) {
-      return NextResponse.json({ sessions: null, error: 'Profil incomplet' });
+    const { onboarding, garmin } = body;
+    if (!onboarding) {
+      return NextResponse.json({ sessions: null, error: 'Données onboarding manquantes' });
     }
 
-    const weeksUntil = Math.round(
-      (new Date(profile.goalDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 7)
-    );
+    const weeksUntil = onboarding.raceDate
+      ? Math.round((new Date(onboarding.raceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 7))
+      : 12;
     const weeksCount = Math.max(4, Math.min(weeksUntil, 24));
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -168,7 +209,7 @@ export async function POST(req: NextRequest) {
       generationConfig: { temperature: 0.7 },
     });
 
-    const prompt = buildPrompt(profile, weeksCount, garmin, userGoalTimeMin);
+    const prompt = buildPrompt(onboarding, weeksCount, garmin);
 
     let raw: string;
     try {
@@ -179,7 +220,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: `Gemini: ${msg}` });
     }
 
-    // Strip markdown fences if Gemini wrapped in ```json ... ```
     const jsonStr = raw
       .replace(/^```(?:json)?\s*\n?/, '')
       .replace(/\n?```\s*$/, '')
@@ -187,24 +227,24 @@ export async function POST(req: NextRequest) {
 
     let sessions: GeminiSession[];
     let goalAssessment: GoalAssessment | null = null;
+    let geminiProfile: UserProfile | null = null;
     try {
       const parsed = JSON.parse(jsonStr) as unknown;
       if (Array.isArray(parsed)) {
-        // Legacy format: bare array
         sessions = parsed as GeminiSession[];
       } else if (parsed && typeof parsed === 'object' && 'sessions' in parsed) {
-        const obj = parsed as { goal?: GoalAssessment; sessions: GeminiSession[] };
+        const obj = parsed as { profile?: UserProfile; goal?: GoalAssessment; sessions: GeminiSession[] };
         sessions = obj.sessions ?? [];
         goalAssessment = obj.goal ?? null;
+        geminiProfile = obj.profile ?? null;
       } else {
-        throw new Error('Unexpected format');
+        throw new Error('Format inattendu');
       }
     } catch {
       console.error('[/api/generate-plan] JSON parse failed. Raw:', raw.slice(0, 300));
       return NextResponse.json({ sessions: null, error: 'Réponse Gemini invalide (JSON mal formé)' });
     }
 
-    // Basic validation: keep sessions with required fields
     sessions = sessions.filter(
       s => typeof s.week === 'number' && typeof s.day === 'number' &&
            typeof s.name === 'string' && typeof s.totalMin === 'number'
@@ -214,9 +254,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Aucune séance valide reçue de Gemini' });
     }
 
-    // Enforce availableDays: guarantee exact session count per week regardless of Gemini compliance
-    const days = profile.availableDays?.length ? profile.availableDays : [2, 4, 6];
-    const maxPerWeek = days.length;
+    // Enforce session count: use Gemini's days if valid, else build from weeklySessions
+    const maxPerWeek = onboarding.weeklySessions;
+    const days = (geminiProfile?.availableDays?.length === maxPerWeek)
+      ? geminiProfile.availableDays
+      : buildDefaultDays(maxPerWeek);
+
     const byWeek = new Map<number, GeminiSession[]>();
     for (const s of sessions) {
       if (!byWeek.has(s.week)) byWeek.set(s.week, []);
@@ -229,10 +272,18 @@ export async function POST(req: NextRequest) {
       sessions.push(...limited);
     }
 
-    return NextResponse.json({ sessions, goalAssessment });
+    // Patch profile with enforced days
+    if (geminiProfile) geminiProfile.availableDays = days;
+
+    return NextResponse.json({ sessions, goalAssessment, profile: geminiProfile });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erreur inconnue';
     console.error('[/api/generate-plan] unhandled:', msg);
     return NextResponse.json({ sessions: null, error: msg });
   }
+}
+
+function buildDefaultDays(n: number): number[] {
+  const defaults: Record<number, number[]> = { 3: [2, 4, 6], 4: [2, 4, 6, 7], 5: [1, 2, 4, 6, 7], 6: [1, 2, 3, 4, 6, 7] };
+  return defaults[n] ?? [2, 4, 6];
 }

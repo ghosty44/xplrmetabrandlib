@@ -9,7 +9,7 @@ import {
   saveGarminUserId, saveShoes, GarminTokens,
 } from '@/lib/store';
 import { UserProfile, TrainingPlan, Session, Shoe } from '@/lib/types';
-import type { GeminiSession, GoalAssessment } from '@/app/api/generate-plan/route';
+import type { GeminiSession, GoalAssessment, OnboardingData } from '@/app/api/generate-plan/route';
 import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -979,20 +979,24 @@ function ChatContent() {
     return undefined;
   };
 
-  const fetchGeminiPlan = async (profile: UserProfile, garmin?: GarminActivitySummary, userGoalTimeMin?: number): Promise<TrainingPlan> => {
-    setLaunchStatus('Gemini construit tes séances…');
+  const fetchGeminiPlan = async (onboarding: OnboardingData, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
+    setLaunchStatus('Gemini analyse ton profil et construit ton plan…');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 50_000);
     try {
       const res = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile, garmin, userGoalTimeMin }),
+        body: JSON.stringify({ onboarding, garmin }),
         signal: controller.signal,
       });
-      const data = await res.json() as { sessions?: GeminiSession[]; goalAssessment?: GoalAssessment; error?: string };
+      const data = await res.json() as { sessions?: GeminiSession[]; goalAssessment?: GoalAssessment; profile?: UserProfile; error?: string };
       if (data.sessions?.length) {
         if (data.goalAssessment) setGoalAssessment(data.goalAssessment);
+        const profile = data.profile ?? buildProfile(
+          onboarding.goalType, onboarding.raceDate ?? '', onboarding.raceDistanceKm ?? '',
+          onboarding.raceElevationGain ?? '', onboarding.fitnessState, onboarding.weeklySessions, onboarding.trainingEnv,
+        );
         return buildPlanFromGeminiSessions(profile, data.sessions);
       }
       console.warn('[generate-plan] fallback to algo:', data.error);
@@ -1001,9 +1005,13 @@ function ChatContent() {
     } finally {
       clearTimeout(timeout);
     }
-    // Fallback: local algo
-    try { return generatePlan(profile); }
-    catch { return { id: `plan_${Date.now()}`, createdAt: new Date().toISOString(), profile, sessions: [] }; }
+    // Fallback: local formulas only if Gemini fails/times out
+    const fallbackProfile = buildProfile(
+      onboarding.goalType, onboarding.raceDate ?? '', onboarding.raceDistanceKm ?? '',
+      onboarding.raceElevationGain ?? '', onboarding.fitnessState, onboarding.weeklySessions, onboarding.trainingEnv,
+    );
+    try { return generatePlan(fallbackProfile); }
+    catch { return { id: `plan_${Date.now()}`, createdAt: new Date().toISOString(), profile: fallbackProfile, sessions: [] }; }
   };
 
   const handleStep7Launch = async () => {
@@ -1016,15 +1024,22 @@ function ChatContent() {
         garmin = await fetchGarminSummary();
       }
 
-      // 2. Build profile from form data (no extra LLM call needed)
-      const profile = buildProfile(
-        goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain,
-        fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat',
-      );
+      // 2. Build onboarding data object (raw answers, no formulas)
+      const onboarding: OnboardingData = {
+        goalType: goalType ?? 'road',
+        raceName: raceName || undefined,
+        raceDate: raceDate || undefined,
+        raceDistanceKm: raceDistanceKm || undefined,
+        raceElevationGain: raceElevationGain || undefined,
+        racePriority: racePriority ?? undefined,
+        fitnessState: fitnessState ?? 'active',
+        weeklySessions: weeklySessions ?? 3,
+        trainingEnv: trainingEnv ?? 'flat',
+        raceGoalTime: raceGoalTime || undefined,
+      };
 
-      // 3. Generate plan sessions with Gemini + Garmin data
-      const userGoalTimeMin = parseGoalTime(raceGoalTime);
-      const plan = await fetchGeminiPlan(profile, garmin, userGoalTimeMin);
+      // 3. Gemini computes everything: profile + goal assessment + sessions
+      const plan = await fetchGeminiPlan(onboarding, garmin);
       setGeneratedPlan(plan);
       setPhase('preview');
     } catch (err) {
