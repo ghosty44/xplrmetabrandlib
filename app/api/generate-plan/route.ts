@@ -168,9 +168,14 @@ function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivity
   }
 
   if (imposedGoalMin !== null || imposedThresholdSec !== null) {
-    lines.push('', '── Valeurs imposées par le backend (NE PAS recalculer) ──');
-    if (imposedGoalMin !== null) lines.push(`goalTimeMin : ${imposedGoalMin} min`);
-    if (imposedThresholdSec !== null) lines.push(`thresholdPaceSec : ${imposedThresholdSec} sec/km (${fmtPaceSec(imposedThresholdSec)})`);
+    lines.push(
+      '',
+      '── Valeurs imposées par le backend (NE PAS recalculer) ──',
+      ...(imposedGoalMin !== null ? [`goalTimeMin : ${imposedGoalMin}`] : []),
+      ...(imposedThresholdSec !== null ? [`thresholdPaceSec : ${imposedThresholdSec} sec/km`] : []),
+      '',
+      "ATTENTION CRITIQUE : Ces deux valeurs écrasent et annulent TOUTE autre donnée du contexte (notamment le \"Chrono visé\" initial ou l'\"Allure moyenne récente\"). Tu DOIS construire la totalité du plan et calibrer toutes tes allures d'entraînement EXCLUSIVEMENT autour de la valeur thresholdPaceSec ci-dessus.",
+    );
   }
 
   return { context: lines.join('\n'), imposedGoalMin, imposedThresholdSec };
@@ -213,8 +218,8 @@ Applique silencieusement ces valeurs par défaut si nécessaire :
 ## 3. Calculs physiologiques & Profil (object "profile")
 
 - "goalRace" : "5k" (<8 km), "10k" (8–16 km), "halfMarathon" (17–34 km), "marathon" (≥35 km). Valable aussi pour le trail.
-- "goalTimeMin" : **UTILISE EXACTEMENT la valeur "goalTimeMin" de la section "Valeurs imposées par le backend" si elle est présente dans le contexte — NE RECALCULE PAS.** Si cette section est absente, utilise le "Chrono visé" déclaré. En dernier recours, estime via l'état de forme. **N'utilise JAMAIS l'Allure moyenne récente comme référence de performance** — c'est une moyenne de footings lents (Z2) souvent en dénivelé, PAS une allure de course.
-- "thresholdPaceSec" : **UTILISE EXACTEMENT la valeur "thresholdPaceSec" de la section "Valeurs imposées par le backend" si présente — NE RECALCULE PAS.** Si absente, calcule depuis le chrono cible (allure race × 0.92 en sec/km).
+- "goalTimeMin" : ÉGAL STRICTEMENT à la valeur numérique fournie par le backend dans la section "Valeurs imposées". Interdiction absolue d'utiliser l'allure moyenne récente pour recalculer ou modifier ce temps. L'allure moyenne récente (qui inclut du dénivelé et des footings lents) n'est PAS un indicateur de performance.
+- "thresholdPaceSec" : ÉGAL STRICTEMENT à la valeur numérique fournie par le backend dans la section "Valeurs imposées". Si absente, calcule depuis le chrono cible (allure race × 0.92 en sec/km).
 - "availableDays" : EXACTEMENT ${sessionsPerWeek} jours (1=Lun … 7=Dim). Minimum 1 jour de repos entre les séances intenses.
 - "weeklyKm" : cohérent avec l'historique récent. Applique un coefficient de reprise si une pause est détectée.
 - "terrain" : "flat" | "hilly" | "trail"
@@ -246,6 +251,7 @@ Distribue les séances de chaque semaine pour atteindre PRÉCISÉMENT son volume
 - Règle 80/20 : ≥ 80% en easy/long/recovery ; ≤ 20% en moderate/hard/hill.
 - Volume hebdo : conforme au tableau imposé ci-dessus (section 5). C'est la seule contrainte de volume.
 - Échauffement : avant toute séance "hard" ou "moderate", prévoir 20–25 min d'échauffement progressif (inclus dans totalMin et km de la séance).
+- Calcul des allures (CRITIQUE) : Toutes les allures générées dans "description" (easy, moderate, hard…) DOIVENT être déduites UNIQUEMENT de la valeur "thresholdPaceSec" imposée par le backend. Ne te base jamais sur l'historique des dernières sorties Garmin pour deviner ou modifier les allures cibles.
 - Précision : "description" doit contenir les allures exactes (min/km), les durées et les consignes. Le plan ne doit jamais être tronqué — toutes les ${weeksCount} semaines.${isTrail ? '\n- Trail : D+ en sortie longue dès sem. 2, hill réguliers, volume final > 25 km D+.' : ''}
 
 ## 7. Format de sortie strict
