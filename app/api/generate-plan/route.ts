@@ -45,6 +45,19 @@ function fmtPaceSec(sec: number): string {
   return `${Math.floor(sec / 60)}'${(sec % 60).toString().padStart(2, '0')}''/km`;
 }
 
+function parseGoalTimeMin(raceGoalTime?: string): number | null {
+  if (!raceGoalTime) return null;
+  const hm = raceGoalTime.match(/(\d+)h(\d+)/i);
+  if (hm) return parseInt(hm[1]) * 60 + parseInt(hm[2]);
+  const hhmmss = raceGoalTime.match(/^(\d+):(\d+):(\d+)$/);
+  if (hhmmss) return parseInt(hhmmss[1]) * 60 + parseInt(hhmmss[2]);
+  const mmss = raceGoalTime.match(/^(\d+):(\d+)$/);
+  if (mmss) return parseInt(mmss[1]) * 60 + parseInt(mmss[2]);
+  const plain = raceGoalTime.match(/^(\d+)/);
+  if (plain) return parseInt(plain[1]);
+  return null;
+}
+
 function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivitySummary): string {
   const FITNESS_LABELS: Record<string, string> = {
     active: 'actif — court régulièrement sans interruption récente',
@@ -138,6 +151,28 @@ function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivity
     lines.push('', '── Données Garmin : non disponibles ──');
   }
 
+  // Pre-compute goalTimeMin and thresholdPaceSec so the LLM never has to calculate them
+  const userGoalMin = parseGoalTimeMin(onboarding.raceGoalTime);
+  let imposedGoalMin: number | null = userGoalMin;
+  let imposedThresholdSec: number | null = null;
+
+  if (garmin?.lactateThresholdSpeedMps) {
+    const threshSec = Math.round(1000 / garmin.lactateThresholdSpeedMps);
+    imposedThresholdSec = threshSec;
+    if (!imposedGoalMin && dist > 0) {
+      const RACE_FACTORS: Record<string, number> = { '5k': 0.92, '10k': 0.97, 'halfMarathon': 1.03, 'marathon': 1.10 };
+      const goalRaceKey = dist < 8 ? '5k' : dist <= 16 ? '10k' : dist <= 34 ? 'halfMarathon' : 'marathon';
+      const racePaceSec = Math.round(threshSec * (RACE_FACTORS[goalRaceKey] ?? 1.0));
+      imposedGoalMin = Math.round(dist * racePaceSec / 60);
+    }
+  }
+
+  if (imposedGoalMin !== null || imposedThresholdSec !== null) {
+    lines.push('', '── Valeurs imposées par le backend (NE PAS recalculer) ──');
+    if (imposedGoalMin !== null) lines.push(`goalTimeMin : ${imposedGoalMin} min`);
+    if (imposedThresholdSec !== null) lines.push(`thresholdPaceSec : ${imposedThresholdSec} sec/km (${fmtPaceSec(imposedThresholdSec)})`);
+  }
+
   return lines.join('\n');
 }
 
@@ -178,8 +213,8 @@ Applique silencieusement ces valeurs par défaut si nécessaire :
 ## 3. Calculs physiologiques & Profil (object "profile")
 
 - "goalRace" : "5k" (<8 km), "10k" (8–16 km), "halfMarathon" (17–34 km), "marathon" (≥35 km). Valable aussi pour le trail.
-- "goalTimeMin" : **PRIORITÉ ABSOLUE au chrono visé déclaré par l'utilisateur** (champ "Chrono visé" du contexte). Si tu veux le valider via Garmin, utilise UNIQUEMENT la **VO2max** ou l'**Allure seuil lactique**. **N'UTILISE JAMAIS l'Allure moyenne récente comme référence de performance** — c'est une moyenne de footings lents (Z2) souvent en dénivelé, PAS une allure de course. La confondre conduit à sous-estimer drastiquement l'athlète. Si aucune donnée Garmin de seuil n'est disponible, fais confiance au chrono visé et estime via l'état de forme.
-- "thresholdPaceSec" : allure cible de course × 0.92 (entier en secondes/km). **Calculée sur l'allure cible de course (déduite du chrono visé), pas sur l'allure moyenne récente.**
+- "goalTimeMin" : **UTILISE EXACTEMENT la valeur "goalTimeMin" de la section "Valeurs imposées par le backend" si elle est présente dans le contexte — NE RECALCULE PAS.** Si cette section est absente, utilise le "Chrono visé" déclaré. En dernier recours, estime via l'état de forme. **N'utilise JAMAIS l'Allure moyenne récente comme référence de performance** — c'est une moyenne de footings lents (Z2) souvent en dénivelé, PAS une allure de course.
+- "thresholdPaceSec" : **UTILISE EXACTEMENT la valeur "thresholdPaceSec" de la section "Valeurs imposées par le backend" si présente — NE RECALCULE PAS.** Si absente, calcule depuis le chrono cible (allure race × 0.92 en sec/km).
 - "availableDays" : EXACTEMENT ${sessionsPerWeek} jours (1=Lun … 7=Dim). Minimum 1 jour de repos entre les séances intenses.
 - "weeklyKm" : cohérent avec l'historique récent. Applique un coefficient de reprise si une pause est détectée.
 - "terrain" : "flat" | "hilly" | "trail"
