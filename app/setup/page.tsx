@@ -8,7 +8,8 @@ import {
   getOrCreateUserId, loadUserId, loadPlan, loadGarminUserId,
   saveGarminUserId, saveShoes, GarminTokens,
 } from '@/lib/store';
-import { UserProfile, TrainingPlan, Shoe } from '@/lib/types';
+import { UserProfile, TrainingPlan, Session, Shoe } from '@/lib/types';
+import type { GeminiSession } from '@/app/api/generate-plan/route';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,32 @@ function buildProfile(
     terrain,
     ...(isTrail && elev > 0 ? { elevationGainPerRace: elev } : {}),
   } as UserProfile;
+}
+
+// ── Build TrainingPlan from Gemini sessions ───────────────────────────────────
+
+const KM_PER_MIN: Record<string, number> = { easy: 0.165, moderate: 0.2, hard: 0.185, long: 0.165, recovery: 0.13, strength: 0, hill: 0.13 };
+
+function buildPlanFromGeminiSessions(profile: UserProfile, geminiSessions: GeminiSession[]): TrainingPlan {
+  const sessions: Session[] = geminiSessions.map((gs, i) => ({
+    id: `gemini_${gs.week}_${gs.day}_${i}`,
+    name: gs.name,
+    week: gs.week,
+    day: gs.day,
+    type: gs.intensity === 'strength' ? 'strength' : 'running',
+    description: gs.description,
+    totalMin: gs.totalMin,
+    totalKm: gs.km ?? Math.round((KM_PER_MIN[gs.intensity] ?? 0.165) * gs.totalMin * 10) / 10,
+    completed: false,
+    garminSynced: false,
+    steps: [],
+  }));
+  return {
+    id: `gemini_${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    profile,
+    sessions,
+  };
 }
 
 // ── Onboarding context builder for Gemini ────────────────────────────────────
@@ -660,8 +687,8 @@ function Step7Result({
       {launching && (
         <div className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
           <div className="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          <p className="text-white text-[15px] font-semibold">Génération de ton plan…</p>
-          <p className="text-white/40 text-[12px]">Gemini analyse ton profil</p>
+          <p className="text-white text-[15px] font-semibold">{launchStatus || 'Génération de ton plan…'}</p>
+          <p className="text-white/40 text-[12px]">Propulsé par Gemini 2.5 Flash</p>
         </div>
       )}
 
@@ -776,10 +803,29 @@ function ChatContent() {
   const [trainingEnv, setTrainingEnv] = useState<TrainingEnv | null>(null);
   const [blobImages, setBlobImages] = useState<string[]>([]);
   const [launching, setLaunching] = useState(false);
+  const [launchStatus, setLaunchStatus] = useState('');
   const [racePriority, setRacePriority] = useState<'main' | 'secondary' | null>(null);
+
+  const fetchGeminiPlan = async (profile: UserProfile): Promise<TrainingPlan> => {
+    setLaunchStatus('Gemini construit tes séances…');
+    const res = await fetch('/api/generate-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile }),
+    });
+    const data = await res.json() as { sessions?: GeminiSession[]; error?: string };
+    if (data.sessions?.length) {
+      return buildPlanFromGeminiSessions(profile, data.sessions);
+    }
+    // Fallback: local algo
+    console.warn('[generate-plan] fallback to algo:', data.error);
+    try { return generatePlan(profile); }
+    catch { return { id: `plan_${Date.now()}`, createdAt: new Date().toISOString(), profile, sessions: [] }; }
+  };
 
   const handleStep7Launch = async () => {
     setLaunching(true);
+    setLaunchStatus('Gemini analyse ton profil…');
     try {
       const context = buildOnboardingContext(
         goalType ?? 'road', raceName, raceDate, raceDistanceKm, raceElevationGain,
@@ -787,34 +833,28 @@ function ChatContent() {
       );
       const welcome: ChatMessage = { role: 'model', content: 'Bonjour ! Je suis ton coach RunAI.' };
       const ctxMsg: ChatMessage = { role: 'user', content: context, hidden: true };
-      const msgs: ChatMessage[] = [welcome, ctxMsg];
 
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: msgs }),
+        body: JSON.stringify({ messages: [welcome, ctxMsg] }),
       });
-      const data = await res.json() as { profile?: UserProfile; message?: string };
+      const data = await res.json() as { profile?: UserProfile };
 
-      let profile: UserProfile;
-      if (data.profile) {
-        profile = data.profile;
-      } else {
-        // Gemini didn't return a PROFILE — fallback to algo
-        profile = buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat');
-      }
-      let plan: TrainingPlan;
-      try { plan = generatePlan(profile); }
-      catch { plan = { profile, sessions: [] } as unknown as TrainingPlan; }
+      const profile = data.profile
+        ?? buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat');
+
+      const plan = await fetchGeminiPlan(profile);
       setGeneratedPlan(plan);
       setPhase('preview');
-    } catch {
-      // Full fallback
+    } catch (err) {
+      console.error('[step7Launch]', err);
       const profile = buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat');
-      try { setGeneratedPlan(generatePlan(profile)); } catch { setGeneratedPlan({ profile, sessions: [] } as unknown as TrainingPlan); }
+      try { setGeneratedPlan(generatePlan(profile)); } catch { setGeneratedPlan({ id: `plan_${Date.now()}`, createdAt: new Date().toISOString(), profile, sessions: [] }); }
       setPhase('preview');
     } finally {
       setLaunching(false);
+      setLaunchStatus('');
     }
   };
 
@@ -930,11 +970,15 @@ function ChatContent() {
       catch { throw new Error(`Erreur serveur (HTTP ${res.status})`); }
       if (data.error) throw new Error(data.error);
       if (data.profile) {
-        const plan = generatePlan(data.profile);
         const botMsg: ChatMessage = { role: 'model', content: data.message ?? 'Voici ton plan !' };
         const final = [...newMessages, botMsg];
         setMessages(final);
         saveChatMessages(final);
+        setThinking(false);
+        setLaunching(true);
+        const plan = await fetchGeminiPlan(data.profile);
+        setLaunching(false);
+        setLaunchStatus('');
         setGeneratedPlan(plan);
         setPhase('preview');
       } else if (data.message) {
@@ -1034,7 +1078,14 @@ function ChatContent() {
 
   // ── Resumed chat phase ─────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#F2F2F7] flex flex-col">
+    <div className="min-h-screen bg-[#F2F2F7] flex flex-col relative">
+      {launching && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+          <div className="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+          <p className="text-white text-[15px] font-semibold">{launchStatus || 'Génération de ton plan…'}</p>
+          <p className="text-white/40 text-[12px]">Propulsé par Gemini 2.5 Flash</p>
+        </div>
+      )}
       <div className="max-w-md mx-auto w-full px-4 pt-14 pb-3 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-[12px] bg-[#0F0F10] flex items-center justify-center flex-shrink-0">
