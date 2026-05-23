@@ -1014,9 +1014,14 @@ function SummaryScreen({
               <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
               <div className="h-3.5 bg-[#F2F2F7] rounded-full w-4/6 animate-pulse" />
               <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
+              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-3/4 animate-pulse" />
             </div>
           ) : (
-            <p className="text-[14px] text-[#3C3C43] leading-relaxed">{text}</p>
+            <div className="space-y-3">
+              {text.split('\n\n').filter(Boolean).map((para, i) => (
+                <p key={i} className="text-[14px] text-[#3C3C43] leading-relaxed">{para}</p>
+              ))}
+            </div>
           )}
         </div>
 
