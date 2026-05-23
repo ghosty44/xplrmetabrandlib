@@ -658,6 +658,34 @@ function Step7Result({
   const isTrail = goalType === 'trail';
   const estimatedMin = estimateFinishMin(dist, elev, isTrail, weeklySessions, fitnessState, garminPaceSec);
 
+  const fmtPaceSec = (sec: number) => `${Math.floor(sec / 60)}'${String(Math.round(sec % 60)).padStart(2, '0')}''`;
+  const fitMult: Record<FitnessState, number> = { active: 1.0, break2w: 1.12, break3w: 1.20, break1m: 1.30 };
+  const fitLabel: Record<FitnessState, string> = { active: '', break2w: ' × 1.12 (reprise légère)', break3w: ' × 1.20 (reprise modérée)', break1m: ' × 1.30 (reprise longue)' };
+
+  const calcSteps: string[] = (() => {
+    if (garminPaceSec && garminPaceSec > 0) {
+      const adjustedPaceSec = garminPaceSec * fitMult[fitnessState];
+      const racePaceSec = adjustedPaceSec * 0.93;
+      const effectiveKm = isTrail ? dist + elev / 100 : dist;
+      const steps = [
+        `Allure entraînement : ${fmtPaceSec(garminPaceSec)}/km (moy. 10 dernières sorties)`,
+        ...(fitnessState !== 'active' ? [`Ajustement forme${fitLabel[fitnessState]} → ${fmtPaceSec(adjustedPaceSec)}/km`] : []),
+        `Effort course ×0.93 → ${fmtPaceSec(racePaceSec)}/km`,
+        ...(isTrail && elev > 0 ? [`Naismith : ${dist}km + ${elev}m D+ ÷ 100 = ${effectiveKm.toFixed(1)} km effectifs`] : []),
+        `${effectiveKm.toFixed(1)} km × ${fmtPaceSec(racePaceSec)} = ${formatTime(estimatedMin)}`,
+      ];
+      return steps;
+    }
+    const km = ([0, 0, 0, 25, 35, 45, 55] as number[])[weeklySessions] ?? 25;
+    const basePace = km >= 50 ? 5.5 : km >= 35 ? 6.2 : km >= 25 ? 7.0 : 8.0;
+    const adjPace = basePace * fitMult[fitnessState];
+    return [
+      `Volume estimé : ${km} km/sem → allure de base : ${fmtPaceSec(adjPace * 60)}/km`,
+      ...(isTrail ? [`Trail ×1.5 + ${elev}m D+ ÷ 8 → estimation globale`] : []),
+      `${dist} km × ${fmtPaceSec(adjPace * 60)} = ${formatTime(estimatedMin)}`,
+    ];
+  })();
+
   const GOAL_LABELS: Record<GoalType, string> = {
     road: 'Course route', trail: 'Trail', beginner: 'Débutant', injury: 'Reprise', test: 'Test niveau',
   };
@@ -698,7 +726,14 @@ function Step7Result({
         <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-[28px] p-6 mb-4">
           <p className="text-[11px] font-semibold text-white/40 uppercase tracking-[0.15em] mb-3">Ta prévision de chrono</p>
           <p className="text-[56px] font-black text-white tabular-nums leading-none tracking-tight">{formatTime(estimatedMin)}</p>
-          <p className="text-[11px] text-white/30 mt-2">{garminPaceSec ? 'Calculé depuis tes sorties Garmin' : 'Estimé selon ton profil actuel'}</p>
+          <div className="mt-4 pt-4 border-t border-white/10 space-y-1.5">
+            {calcSteps.map((step, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="text-[10px] text-white/25 font-semibold mt-0.5 flex-shrink-0">{i + 1}</span>
+                <p className={`text-[11px] leading-snug ${i === calcSteps.length - 1 ? 'text-white/70 font-semibold' : 'text-white/35'}`}>{step}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
