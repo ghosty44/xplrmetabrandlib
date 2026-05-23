@@ -7,7 +7,8 @@ import { savePlan, saveProfile, saveGarminTokens, loadGarminTokens, getOrCreateU
 import { UserProfile, TrainingPlan, Shoe } from '@/lib/types';
 import { formatPace } from '@/lib/zones';
 
-type Phase = 'garmin' | 'loading' | 'chat' | 'preview';
+type Phase = 'garmin' | 'loading' | 'goalType' | 'trailPriority' | 'trailDetails' | 'chat' | 'preview';
+type GoalType = 'road' | 'trail' | 'beginner' | 'injury' | 'test';
 type ChatMessage = { role: 'user' | 'model'; content: string; hidden?: boolean };
 
 const CHAT_KEY = 'runai_chat_messages';
@@ -76,11 +77,8 @@ function TypingDots() {
   return (
     <div className="flex items-center gap-1 px-4 py-3">
       {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-[#8E8E93] animate-bounce"
-          style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.8s' }}
-        />
+        <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#8E8E93] animate-bounce"
+          style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.8s' }} />
       ))}
     </div>
   );
@@ -104,10 +102,11 @@ function PlanPreview({ plan, onConfirm, onBack }: { plan: TrainingPlan; onConfir
           </svg>
           Modifier
         </button>
-
         <div className="rounded-[28px] bg-[#0F0F10] p-6">
           <p className="text-[10px] font-semibold text-white/50 uppercase tracking-[0.15em] mb-1">Ton plan RunAI</p>
-          <p className="text-[28px] font-black text-white leading-tight mb-1">{RACE_LABELS[p.goalRace]}</p>
+          <p className="text-[28px] font-black text-white leading-tight mb-1">
+            {p.terrain === 'trail' ? 'Trail' : RACE_LABELS[p.goalRace]}
+          </p>
           <p className="text-[13px] text-white/50 mb-5">
             {new Date(p.goalDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
             {p.goalTimeMin ? ` · ${Math.floor(p.goalTimeMin / 60)}h${p.goalTimeMin % 60 > 0 ? p.goalTimeMin % 60 + 'min' : ''}` : ''}
@@ -125,7 +124,6 @@ function PlanPreview({ plan, onConfirm, onBack }: { plan: TrainingPlan; onConfir
             ))}
           </div>
         </div>
-
         <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
           <div className="px-5 py-4 border-b border-[#F2F2F7]">
             <p className="text-[13px] font-semibold text-[#0F0F10]">Aperçu du plan</p>
@@ -152,11 +150,7 @@ function PlanPreview({ plan, onConfirm, onBack }: { plan: TrainingPlan; onConfir
             </div>
           )}
         </div>
-
-        <button
-          onClick={onConfirm}
-          className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black transition-all active:scale-[0.98]"
-        >
+        <button onClick={onConfirm} className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black transition-all active:scale-[0.98]">
           Commencer l&apos;entraînement →
         </button>
       </div>
@@ -208,7 +202,6 @@ function GarminConnectStep({ onConnected, onSkip }: {
             Tes données et ton plan sont sauvegardés sur ton compte. Reconnecte-toi depuis n&apos;importe quel appareil.
           </p>
         </div>
-
         <div className="rounded-[24px] bg-white border border-black/5 p-5">
           <form onSubmit={handleConnect} className="space-y-3">
             {error && (
@@ -217,54 +210,248 @@ function GarminConnectStep({ onConnected, onSkip }: {
               </div>
             )}
             <div>
-              <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                Email Garmin Connect
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="ton@email.com"
-                className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10"
-              />
+              <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Email Garmin Connect</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="ton@email.com"
+                className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10" />
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">
-                Mot de passe
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10"
-              />
+              <label className="block text-[11px] font-semibold text-[#8E8E93] uppercase tracking-[0.08em] mb-1.5">Mot de passe</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••"
+                className="w-full px-4 py-3 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] border-0 outline-none focus:ring-2 focus:ring-[#0F0F10]/10" />
             </div>
-            <p className="text-[11px] text-[#8E8E93]">
-              Tes identifiants ne sont jamais stockés — seuls les tokens OAuth sont conservés localement.
-            </p>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 rounded-[14px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:opacity-50 transition-all active:scale-[0.98]"
-            >
+            <p className="text-[11px] text-[#8E8E93]">Tes identifiants ne sont jamais stockés — seuls les tokens OAuth sont conservés localement.</p>
+            <button type="submit" disabled={loading}
+              className="w-full py-3.5 rounded-[14px] bg-[#0F0F10] text-white text-[13px] font-semibold disabled:opacity-50 transition-all active:scale-[0.98]">
               {loading ? 'Connexion en cours...' : 'Se connecter à Garmin'}
             </button>
           </form>
         </div>
-
-        <button
-          onClick={onSkip}
-          className="w-full py-3 text-[12px] font-medium text-[#8E8E93] transition-all active:scale-[0.98]"
-        >
+        <button onClick={onSkip} className="w-full py-3 text-[12px] font-medium text-[#8E8E93] transition-all active:scale-[0.98]">
           Continuer sans Garmin
         </button>
       </div>
     </div>
   );
 }
+
+// ── Goal type constants ───────────────────────────────────────────────────────
+
+const GOAL_CARDS: { id: GoalType; title: string; subtitle: string; color: string }[] = [
+  { id: 'road',     title: 'Préparer une course route',    subtitle: 'Un plan construit pour ton prochain dossard',                  color: '#1C3A5E' },
+  { id: 'trail',    title: 'Préparer une course trail',    subtitle: "On t'accompagne sur tous les terrains, du 5km à l'ultra",       color: '#1A3A2A' },
+  { id: 'beginner', title: 'Commencer à courir',           subtitle: 'Un programme pour apprendre les bases de la course à pied',     color: '#3A2A1A' },
+  { id: 'injury',   title: 'Reprendre après une blessure', subtitle: 'On sécurise ta reprise pour retrouver tes sensations',          color: '#3A1A1A' },
+  { id: 'test',     title: 'Tester mon niveau',            subtitle: 'On définit ton profil avec un test de niveau sur 1500m',        color: '#2A1A3A' },
+];
+
+// ── GoalTypeStep ──────────────────────────────────────────────────────────────
+
+function GoalTypeStep({ onSelect, images }: { onSelect: (t: GoalType) => void; images: string[] }) {
+  const [selected, setSelected] = useState<GoalType | null>(null);
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F0] flex flex-col">
+      <div className="max-w-md mx-auto w-full px-5 pt-14 pb-36 space-y-3">
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-[20px] font-black text-[#0F0F10] tracking-tight">Ajouter un objectif</h1>
+        </div>
+
+        {GOAL_CARDS.map((card, i) => {
+          const img = images.length > 0 ? images[i % images.length] : null;
+          const active = selected === card.id;
+          return (
+            <button key={card.id} onClick={() => setSelected(card.id)}
+              className={`w-full flex items-center gap-4 p-4 rounded-[20px] bg-white border-2 text-left transition-all ${active ? 'border-[#0F0F10]' : 'border-transparent'}`}
+              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+              <div className="w-[72px] h-[72px] rounded-[14px] overflow-hidden flex-shrink-0" style={{ backgroundColor: card.color }}>
+                {img ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={img} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ) : null}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[15px] font-bold text-[#0F0F10] leading-snug">{card.title}</p>
+                <p className="text-[12px] text-[#8E8E93] mt-0.5 leading-snug">{card.subtitle}</p>
+              </div>
+              <div className={`w-6 h-6 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-all ${active ? 'border-[#0F0F10] bg-[#0F0F10]' : 'border-[#D1D1D6]'}`}>
+                {active && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="fixed bottom-8 inset-x-0 px-5 max-w-md mx-auto">
+        <button disabled={!selected} onClick={() => selected && onSelect(selected)}
+          className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black disabled:opacity-30 transition-all active:scale-[0.98]">
+          Continuer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── TrailHeader (shared) ──────────────────────────────────────────────────────
+
+function TrailHeader({ name, distanceKm, elevationGain, image }: { name: string; distanceKm: string; elevationGain: string; image?: string }) {
+  const title = name || 'Course trail';
+  const sub = [distanceKm ? `${distanceKm} km` : 'Distance', elevationGain ? `${elevationGain} m` : 'Dénivelé', 'Durée du plan'].join(' | ');
+  return (
+    <div className="relative rounded-[20px] overflow-hidden h-[88px] mb-6 bg-[#0F0F10]">
+      {image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image} alt="" className="absolute inset-0 w-full h-full object-cover opacity-50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent" />
+      <div className="relative flex items-center gap-3 h-full px-4">
+        <div className="w-12 h-12 rounded-[12px] bg-white flex items-center justify-center flex-shrink-0">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F0F10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+          </svg>
+        </div>
+        <div>
+          <p className="text-[15px] font-bold text-white leading-tight">{title}</p>
+          <p className="text-[11px] text-white/60">{sub}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TrailPriorityStep ─────────────────────────────────────────────────────────
+
+function TrailPriorityStep({ image, onSelect, onBack }: {
+  image?: string;
+  onSelect: (p: 'main' | 'secondary') => void;
+  onBack: () => void;
+}) {
+  const [selected, setSelected] = useState<'main' | 'secondary' | null>(null);
+  const opts = [
+    { id: 'main' as const, title: "C'est un objectif principal", sub: "Tout mon plan sera construit pour m'amener au pic de forme ce jour-là" },
+    { id: 'secondary' as const, title: "C'est un objectif secondaire", sub: "Cette course s'intègre à ma routine pour me tester ou pour le plaisir" },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F0] flex flex-col">
+      <div className="max-w-md mx-auto w-full px-5 pt-14 pb-36">
+        <div className="flex items-center justify-between mb-5">
+          <button onClick={onBack} className="w-9 h-9 rounded-full bg-white border border-black/8 flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          </button>
+          <p className="text-[15px] font-semibold text-[#0F0F10]">Ajouter un objectif</p>
+          <div className="w-9" />
+        </div>
+
+        <TrailHeader name="" distanceKm="" elevationGain="" image={image} />
+
+        <h2 className="text-[22px] font-black text-[#0F0F10] mb-5">Comment envisages-tu cette course&nbsp;?</h2>
+
+        <div className="space-y-3">
+          {opts.map((opt) => (
+            <button key={opt.id} onClick={() => setSelected(opt.id)}
+              className={`w-full text-left p-4 rounded-[20px] bg-white border-2 transition-all ${selected === opt.id ? 'border-[#0F0F10]' : 'border-transparent'}`}
+              style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <p className="text-[15px] font-bold text-[#0F0F10] leading-snug">{opt.title}</p>
+                  <p className="text-[12px] text-[#8E8E93] mt-1 leading-snug">{opt.sub}</p>
+                </div>
+                <div className={`w-6 h-6 rounded-full border-2 flex-shrink-0 mt-0.5 flex items-center justify-center ${selected === opt.id ? 'border-[#0F0F10] bg-[#0F0F10]' : 'border-[#D1D1D6]'}`}>
+                  {selected === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-white" />}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="fixed bottom-8 inset-x-0 px-5 max-w-md mx-auto">
+        <button disabled={!selected} onClick={() => selected && onSelect(selected)}
+          className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black disabled:opacity-30 transition-all active:scale-[0.98]">
+          Continuer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── TrailDetailsStep ──────────────────────────────────────────────────────────
+
+function TrailDetailsStep({ image, onConfirm, onBack }: {
+  image?: string;
+  onConfirm: (name: string, distanceKm: string, elevationGain: string) => void;
+  onBack: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [distanceKm, setDistanceKm] = useState('');
+  const [elevationGain, setElevationGain] = useState('');
+  const [showModal, setShowModal] = useState(false);
+
+  const canContinue = !!distanceKm && Number(distanceKm) > 0;
+
+  return (
+    <div className="min-h-screen bg-[#F5F5F0] flex flex-col">
+      <div className="max-w-md mx-auto w-full px-5 pt-14 pb-36">
+        <div className="flex items-center justify-between mb-5">
+          <button onClick={onBack} className="w-9 h-9 rounded-full bg-white border border-black/8 flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="#0F0F10" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          </button>
+          <p className="text-[15px] font-semibold text-[#0F0F10]">Ajouter un objectif</p>
+          <div className="w-9" />
+        </div>
+
+        <TrailHeader name={name} distanceKm={distanceKm} elevationGain={elevationGain} image={image} />
+
+        <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Dis-nous en plus sur ta course&nbsp;!</h2>
+        <p className="text-[13px] text-[#8E8E93] mb-5">pour personnaliser au mieux ton entraînement</p>
+
+        <div className="space-y-3">
+          {[
+            { label: 'NOM DE LA COURSE (OPTIONNEL)', placeholder: 'UTMB', value: name, onChange: setName, type: 'text' },
+            { label: 'DISTANCE (KM)', placeholder: '0', value: distanceKm, onChange: setDistanceKm, type: 'number' },
+            { label: 'DÉNIVELÉ POSITIF (M)', placeholder: '0', value: elevationGain, onChange: setElevationGain, type: 'number' },
+          ].map((field) => (
+            <div key={field.label} className="bg-white rounded-[20px] p-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+              <p className="text-[10px] font-bold text-[#8E8E93] uppercase tracking-[0.12em] mb-2">{field.label}</p>
+              <input type={field.type} value={field.value} onChange={(e) => field.onChange(e.target.value)}
+                placeholder={field.placeholder} min={field.type === 'number' ? '0' : undefined}
+                className="w-full text-[17px] font-semibold text-[#0F0F10] bg-transparent outline-none placeholder:text-[#D1D1D6]" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Duration explanation modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm px-5 pb-8">
+          <div className="w-full max-w-md bg-white rounded-[28px] p-6 space-y-4">
+            <h3 className="text-[20px] font-black text-[#0F0F10]">Pourquoi imposer une durée minimum&nbsp;?</h3>
+            <p className="text-[14px] text-[#8E8E93] leading-relaxed">
+              On calcule ce délai en fonction de ta course objectif, son dénivelé, et de ton profil actuel. Ce délai est indispensable pour&nbsp;:
+            </p>
+            <div className="space-y-2">
+              <p className="text-[14px] text-[#0F0F10]">✓ Progresser sans risque en respectant tes capacités actuelles</p>
+              <p className="text-[14px] text-[#0F0F10]">✓ Garantir ta fraîcheur et ton succès le jour de la course</p>
+            </div>
+            <button onClick={() => { setShowModal(false); onConfirm(name, distanceKm, elevationGain); }}
+              className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black transition-all active:scale-[0.98]">
+              J&apos;ai compris
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed bottom-8 inset-x-0 px-5 max-w-md mx-auto">
+        <button disabled={!canContinue} onClick={() => setShowModal(true)}
+          className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black disabled:opacity-30 transition-all active:scale-[0.98]">
+          Continuer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── ChatContent ───────────────────────────────────────────────────────────────
 
 function ChatContent() {
   const router = useRouter();
@@ -278,24 +465,38 @@ function ChatContent() {
   const [generatedPlan, setGeneratedPlan] = useState<TrainingPlan | null>(null);
   const [initialized, setInitialized] = useState(false);
 
+  // Goal type flow state
+  const [trailPriority, setTrailPriority] = useState<'main' | 'secondary' | null>(null);
+  const [blobImages, setBlobImages] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/blob-images')
+      .then(r => r.json())
+      .then((d: { all?: string[] }) => setBlobImages(d.all ?? []))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const force = searchParams.get('force') === '1';
-
-    // If already have tokens or garminUserId → skip garmin step
     const tokens = loadGarminTokens();
     const garminId = loadGarminUserId();
     const alreadyAuthed = !!tokens || !!garminId;
 
-    if (alreadyAuthed && !force) {
-      // Check if a plan already exists in memory or DB
+    // Resume in-progress chat session
+    const saved = loadChatMessages();
+    if (saved.length > 0 && !force) {
+      setMessages(saved);
+      setPhase('chat');
+      setInitialized(true);
+      return;
+    }
+
+    if (alreadyAuthed) {
       const localPlan = loadPlan();
-      if (localPlan) {
-        router.replace('/');
-        return;
-      }
-      // Try fetching from DB
+      if (localPlan && !force) { router.replace('/'); return; }
+
       const userId = loadUserId();
-      if (userId) {
+      if (userId && !force) {
         setPhase('loading');
         fetch(`/api/profile?userId=${encodeURIComponent(userId)}`)
           .then(r => r.json())
@@ -305,46 +506,70 @@ function ChatContent() {
               if (d.shoes?.length) saveShoes(d.shoes);
               router.replace('/');
             } else {
-              startChat(force);
+              setPhase('goalType');
+              setInitialized(true);
             }
           })
-          .catch(() => startChat(force));
+          .catch(() => { setPhase('goalType'); setInitialized(true); });
         return;
       }
-    }
-
-    if (alreadyAuthed && force) {
-      startChat(force);
+      clearChatMessages();
+      setPhase('goalType');
+      setInitialized(true);
       return;
     }
 
-    // Not authed → show garmin step
     setPhase('garmin');
     setInitialized(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function startChat(force: boolean) {
-    const saved = loadChatMessages();
-    if (saved.length > 0 && !force) {
-      setMessages(saved);
+  async function beginChat(hiddenContext?: string) {
+    clearChatMessages();
+
+    if (hiddenContext) {
+      const welcome: ChatMessage = {
+        role: 'model',
+        content: 'Bonjour ! Je suis ton coach RunAI. Pour créer ton plan personnalisé, j\'ai besoin de quelques informations.',
+      };
+      const hiddenMsg: ChatMessage = { role: 'user', content: hiddenContext, hidden: true };
+      const initial: ChatMessage[] = [welcome, hiddenMsg];
+      setMessages(initial);
+      saveChatMessages(initial);
+      setPhase('chat');
+      setInitialized(true);
+
+      setThinking(true);
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: initial }),
+        });
+        const data = await res.json() as { message?: string; profile?: UserProfile };
+        if (data.message) {
+          const ai: ChatMessage = { role: 'model', content: data.message };
+          const updated = [...initial, ai];
+          setMessages(updated);
+          saveChatMessages(updated);
+        }
+      } catch { /* chat still usable */ }
+      finally { setThinking(false); }
     } else {
-      clearChatMessages();
       const welcome: ChatMessage = {
         role: 'model',
         content: 'Bonjour ! Je suis ton coach RunAI. Pour créer ton plan d\'entraînement personnalisé, j\'ai besoin de quelques informations. Pour quel objectif de course souhaites-tu t\'entraîner ?',
       };
       setMessages([welcome]);
       saveChatMessages([welcome]);
+      setPhase('chat');
+      setInitialized(true);
     }
-    setPhase('chat');
-    setInitialized(true);
   }
 
   const handleGarminConnected = async (garminUserId: string, tokens: GarminTokens) => {
     saveGarminTokens(tokens);
     if (garminUserId) saveGarminUserId(garminUserId);
-
     const userId = garminUserId || loadUserId();
     if (userId) {
       setPhase('loading');
@@ -359,22 +584,54 @@ function ChatContent() {
         }
       } catch { /* non-fatal */ }
     }
-    startChat(false);
+    setPhase('goalType');
+    setInitialized(true);
   };
 
   const handleSkipGarmin = () => {
-    startChat(false);
+    setPhase('goalType');
+    setInitialized(true);
+  };
+
+  const handleGoalSelected = (type: GoalType) => {
+    if (type === 'trail') {
+      setPhase('trailPriority');
+      return;
+    }
+    const contexts: Record<GoalType, string> = {
+      road: "Je veux préparer une course sur route. Commence directement par me demander la distance précise (5km, 10km, semi-marathon ou marathon), puis la date et le chrono visé.",
+      trail: '',
+      beginner: "Je suis débutant et je veux commencer à courir. Adapte le protocole pour un débutant complet qui veut progresser progressivement.",
+      injury: "Je reprends la course après une blessure. J'ai besoin d'un programme de reprise progressif et sécurisé.",
+      test: "Je veux tester mon niveau sur 1500m avant de créer mon plan d'entraînement.",
+    };
+    beginChat(contexts[type]);
+  };
+
+  const handleTrailPrioritySelected = (priority: 'main' | 'secondary') => {
+    setTrailPriority(priority);
+    setPhase('trailDetails');
+  };
+
+  const handleTrailDetailsConfirmed = (name: string, distanceKm: string, elevationGain: string) => {
+    const priorityLabel = trailPriority === 'main' ? 'objectif principal' : 'objectif secondaire';
+    const context = [
+      `Je veux préparer un trail${name ? ` : "${name}"` : ''}.`,
+      `Distance : ${distanceKm}km.`,
+      elevationGain ? `Dénivelé positif : ${elevationGain}m.` : '',
+      `C'est un ${priorityLabel}. Le terrain est trail.`,
+      `Ne repose pas la question sur le terrain (déjà répondu : trail).`,
+      `Commence par me demander la date exacte de la course et mon chrono cible.`,
+    ].filter(Boolean).join(' ');
+    beginChat(context);
   };
 
   useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, thinking]);
 
   const sendMessage = async (content: string) => {
     if (!content.trim() || thinking) return;
-
     const userMsg: ChatMessage = { role: 'user', content };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -388,29 +645,26 @@ function ChatContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages }),
       });
-
       let data: { message?: string; profile?: UserProfile; error?: string };
       try {
         data = await res.json() as typeof data;
       } catch {
         throw new Error(`Erreur serveur (HTTP ${res.status}) — vérifie les variables d'environnement Vercel`);
       }
-
       if (data.error) throw new Error(data.error);
-
       if (data.profile) {
         const plan = generatePlan(data.profile);
         const botMsg: ChatMessage = { role: 'model', content: data.message ?? 'Voici ton plan !' };
-        const finalMessages = [...newMessages, botMsg];
-        setMessages(finalMessages);
-        saveChatMessages(finalMessages);
+        const final = [...newMessages, botMsg];
+        setMessages(final);
+        saveChatMessages(final);
         setGeneratedPlan(plan);
         setPhase('preview');
       } else if (data.message) {
         const botMsg: ChatMessage = { role: 'model', content: data.message };
-        const finalMessages = [...newMessages, botMsg];
-        setMessages(finalMessages);
-        saveChatMessages(finalMessages);
+        const final = [...newMessages, botMsg];
+        setMessages(final);
+        saveChatMessages(final);
       } else {
         throw new Error('Réponse vide du serveur');
       }
@@ -438,17 +692,10 @@ function ChatContent() {
     router.push('/');
   };
 
-  // ── Garmin phase ──────────────────────────────────────────────────────────
-  if (phase === 'garmin') {
-    return (
-      <GarminConnectStep
-        onConnected={handleGarminConnected}
-        onSkip={handleSkipGarmin}
-      />
-    );
-  }
+  // ── Phase renders ─────────────────────────────────────────────────────────
 
-  // ── Loading phase ─────────────────────────────────────────────────────────
+  if (phase === 'garmin') return <GarminConnectStep onConnected={handleGarminConnected} onSkip={handleSkipGarmin} />;
+
   if (phase === 'loading' || !initialized) {
     return (
       <div className="min-h-screen bg-[#F2F2F7] flex flex-col items-center justify-center gap-3">
@@ -458,15 +705,26 @@ function ChatContent() {
     );
   }
 
-  // ── Preview phase ─────────────────────────────────────────────────────────
+  if (phase === 'goalType') return <GoalTypeStep onSelect={handleGoalSelected} images={blobImages} />;
+
+  if (phase === 'trailPriority') return (
+    <TrailPriorityStep
+      image={blobImages[1] ?? blobImages[0]}
+      onSelect={handleTrailPrioritySelected}
+      onBack={() => setPhase('goalType')}
+    />
+  );
+
+  if (phase === 'trailDetails') return (
+    <TrailDetailsStep
+      image={blobImages[1] ?? blobImages[0]}
+      onConfirm={handleTrailDetailsConfirmed}
+      onBack={() => setPhase('trailPriority')}
+    />
+  );
+
   if (phase === 'preview' && generatedPlan) {
-    return (
-      <PlanPreview
-        plan={generatedPlan}
-        onConfirm={handleConfirmPlan}
-        onBack={() => setPhase('chat')}
-      />
-    );
+    return <PlanPreview plan={generatedPlan} onConfirm={handleConfirmPlan} onBack={() => setPhase('chat')} />;
   }
 
   // ── Chat phase ────────────────────────────────────────────────────────────
@@ -487,18 +745,15 @@ function ChatContent() {
       <div className="flex-1 overflow-y-auto max-w-md mx-auto w-full px-4 py-2 space-y-3">
         {messages.filter((m) => !m.hidden).map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[82%] px-4 py-3 rounded-[18px] text-[14px] leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-[#0F0F10] text-white rounded-br-[6px]'
-                  : 'bg-white border border-black/5 text-[#0F0F10] rounded-bl-[6px]'
-              }`}
-            >
+            <div className={`max-w-[82%] px-4 py-3 rounded-[18px] text-[14px] leading-relaxed ${
+              msg.role === 'user'
+                ? 'bg-[#0F0F10] text-white rounded-br-[6px]'
+                : 'bg-white border border-black/5 text-[#0F0F10] rounded-bl-[6px]'
+            }`}>
               {msg.content}
             </div>
           </div>
         ))}
-
         {thinking && (
           <div className="flex justify-start">
             <div className="bg-white border border-black/5 rounded-[18px] rounded-bl-[6px]">
@@ -506,12 +761,10 @@ function ChatContent() {
             </div>
           </div>
         )}
-
         <div ref={bottomRef} />
       </div>
 
       <div className="max-w-md mx-auto w-full pb-8 pt-1 flex-shrink-0">
-        {/* Quick reply chips */}
         {!thinking && (() => {
           const lastBot = [...messages].reverse().find(m => m.role === 'model' && !m.hidden);
           const chips = lastBot ? getQuickReplies(lastBot.content, messages) : [];
@@ -519,35 +772,23 @@ function ChatContent() {
           return (
             <div className="flex gap-2 overflow-x-auto pb-2 px-4 scrollbar-none">
               {chips.map((chip) => (
-                <button
-                  key={chip}
-                  onClick={() => sendMessage(chip)}
-                  className="flex-shrink-0 px-4 py-2 rounded-full bg-white border border-black/8 text-[12px] font-semibold text-[#0F0F10] whitespace-nowrap transition-all active:scale-[0.96] active:bg-[#F2F2F7]"
-                >
+                <button key={chip} onClick={() => sendMessage(chip)}
+                  className="flex-shrink-0 px-4 py-2 rounded-full bg-white border border-black/8 text-[12px] font-semibold text-[#0F0F10] whitespace-nowrap transition-all active:scale-[0.96] active:bg-[#F2F2F7]">
                   {chip}
                 </button>
               ))}
             </div>
           );
         })()}
-
-        {/* Input bar */}
         <div className="flex items-end gap-2 px-4">
           <div className="flex-1 flex items-center bg-white border border-black/8 rounded-[20px] px-4 py-3 gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+            <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
               placeholder="Écris ta réponse..."
-              className="flex-1 bg-transparent text-[14px] text-[#0F0F10] placeholder:text-[#8E8E93] outline-none"
-            />
+              className="flex-1 bg-transparent text-[14px] text-[#0F0F10] placeholder:text-[#8E8E93] outline-none" />
           </div>
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || thinking}
-            className="w-11 h-11 rounded-full bg-[#0F0F10] flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition-all active:scale-[0.93]"
-          >
+          <button onClick={() => sendMessage(input)} disabled={!input.trim() || thinking}
+            className="w-11 h-11 rounded-full bg-[#0F0F10] flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition-all active:scale-[0.93]">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z"/>
             </svg>

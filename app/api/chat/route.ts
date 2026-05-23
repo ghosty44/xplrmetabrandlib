@@ -37,7 +37,7 @@ PRINCIPES PHYSIOLOGIQUES (inflexibles) :
 Quand tu as toutes les infos obligatoires (objectif, volume, jours dispo, blessures), ta réponse doit contenir DEUX blocs invisibles :
 
 1. <PROFILE>{"goalRace":"marathon","goalDate":"YYYY-MM-DD","goalTimeMin":210,"weeklyKm":40,"thresholdPaceSec":275,"availableDays":[2,4,6,7],"terrain":"flat"}</PROFILE>
-   - goalRace : exactement "marathon", "halfMarathon", "10k", ou "5k"
+   - goalRace : mapper la distance trail → "5k" (<15km), "halfMarathon" (15-34km), "marathon" (≥35km). Pour route : exactement "marathon", "halfMarathon", "10k", ou "5k"
    - goalDate : ISO YYYY-MM-DD (interprète l'année comme 2026 ou 2027 selon le contexte)
    - goalTimeMin : en minutes entières
    - thresholdPaceSec : Math.round((goalTimeMin * 60 / distanceKm) * 0.92)
@@ -46,6 +46,7 @@ Quand tu as toutes les infos obligatoires (objectif, volume, jours dispo, blessu
      → prends les 4 premiers jours disponibles dans l'ordre. Si moins de 4 jours dispo, complète avec des jours adjacents raisonnables.
    - strengthPerWeek : 0, 1 ou 2 (nombre de séances de renforcement musculaire par semaine)
    - terrain : "flat" (route plate), "hilly" (route vallonnée / côtes), ou "trail" (sentiers / montagne)
+   - elevationGainPerRace : dénivelé positif en mètres (trail uniquement, sinon omis)
    - Ajoute "maxHR":185 si tu l'as
 
 2. <EXPLANATION>Explication coach en 3-4 phrases percutantes : logique du plan, pourquoi ce nombre de semaines, quels types de séances et pourquoi adaptés au profil, ce qui va progresser.</EXPLANATION>
