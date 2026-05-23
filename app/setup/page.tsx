@@ -17,7 +17,7 @@ import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 type Phase =
   | 'garmin' | 'loading'
   | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7'
-  | 'reflect' | 'chat' | 'preview';
+  | 'summary' | 'chat' | 'preview';
 
 type GoalType = 'road' | 'trail' | 'beginner' | 'injury' | 'test';
 type FitnessState = 'active' | 'break2w' | 'break3w' | 'break1m';
@@ -933,39 +933,107 @@ function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: Traini
   );
 }
 
-// ── Reflect screen (debug) ────────────────────────────────────────────────────
+// ── Summary screen ────────────────────────────────────────────────────────────
 
-function ReflectScreen({ step, loading, text, onNext }: {
-  step: number;
+function SummaryScreen({
+  loading, text, onNext,
+  goalType, raceName, raceDistanceKm, raceElevationGain, raceDate,
+  fitnessState, weeklySessions, hasGarmin,
+}: {
   loading: boolean;
   text: string;
   onNext: () => void;
+  goalType: GoalType;
+  raceName: string; raceDistanceKm: string; raceElevationGain: string; raceDate: string;
+  fitnessState: FitnessState | null; weeklySessions: 3 | 4 | 5 | 6 | null;
+  hasGarmin: boolean;
 }) {
+  const GOAL_LABELS: Record<GoalType, string> = {
+    road: 'Course route', trail: 'Trail', beginner: 'Débutant', injury: 'Reprise', test: 'Test',
+  };
+  const FITNESS_LABELS: Record<FitnessState, string> = {
+    active: 'En forme', break2w: 'Pause 2-3 sem.', break3w: 'Pause 3-4 sem.', break1m: 'Pause > 1 mois',
+  };
+
+  const chips = [
+    GOAL_LABELS[goalType],
+    raceName || null,
+    raceDistanceKm ? `${raceDistanceKm} km` : null,
+    raceElevationGain && goalType === 'trail' ? `${raceElevationGain} D+` : null,
+    raceDate ? new Date(raceDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : null,
+    fitnessState ? FITNESS_LABELS[fitnessState] : null,
+    weeklySessions ? `${weeklySessions} séances/sem.` : null,
+  ].filter(Boolean) as string[];
+
   return (
-    <div className="min-h-screen bg-[#0F0F10] flex flex-col items-center justify-center px-5">
-      <div className="max-w-md w-full space-y-6">
-        <div className="flex items-center gap-2">
-          <span className="px-2.5 py-1 rounded-full bg-[#C8E635]/20 text-[#C8E635] text-[10px] font-black uppercase tracking-widest">Debug</span>
-          <p className="text-white/40 text-[12px]">Réflexion Gemini · Étape {step}/6</p>
+    <div className="min-h-screen bg-[#F5F5F0] flex flex-col">
+      <div className="px-5 pt-14 pb-5 max-w-md mx-auto w-full">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 flex-shrink-0" />
+          <p className="flex-1 text-center text-[15px] font-semibold text-[#0F0F10]">Ajouter un objectif</p>
+          <p className="text-[13px] font-semibold text-[#8E8E93] w-9 text-right flex-shrink-0">7/7</p>
         </div>
-        <div className="rounded-[24px] bg-white/5 border border-white/10 p-6 min-h-[160px] flex items-start">
-          {loading ? (
-            <div className="flex items-center gap-3">
-              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin flex-shrink-0" />
-              <p className="text-white/40 text-[14px]">Gemini réfléchit…</p>
-            </div>
-          ) : (
-            <p className="text-white/80 text-[14px] leading-relaxed">{text}</p>
+        <div className="h-1 bg-[#E5E5EA] rounded-full overflow-hidden">
+          <div className="h-full bg-[#0F0F10] rounded-full" style={{ width: '85%' }} />
+        </div>
+      </div>
+
+      <div className="max-w-md mx-auto w-full px-5 pb-36 space-y-4">
+        <div>
+          <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Analyse de ton profil</h2>
+          <p className="text-[13px] text-[#8E8E93]">Voici ce que Gemini a retenu pour construire ton plan</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {chips.map((chip) => (
+            <span key={chip} className="px-3 py-1.5 rounded-full bg-white border border-black/8 text-[12px] font-semibold text-[#0F0F10]"
+              style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              {chip}
+            </span>
+          ))}
+          {hasGarmin && (
+            <span className="px-3 py-1.5 rounded-full bg-[#C8E635]/15 border border-[#C8E635]/30 text-[12px] font-semibold text-[#5A6A00]">
+              Garmin connecté
+            </span>
           )}
         </div>
-        <button
-          onClick={onNext}
-          disabled={loading}
-          className="w-full py-4 rounded-[20px] bg-white text-[#0F0F10] text-[15px] font-black disabled:opacity-30 transition-all active:scale-[0.98]"
-        >
-          Suivant →
-        </button>
+
+        <div className="bg-white rounded-[24px] p-5" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-6 h-6 rounded-full bg-[#0F0F10] flex items-center justify-center flex-shrink-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3" />
+              </svg>
+            </div>
+            <p className="text-[12px] font-bold text-[#0F0F10] uppercase tracking-[0.08em]">Analyse du coach</p>
+          </div>
+          {loading ? (
+            <div className="space-y-2.5">
+              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
+              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-5/6 animate-pulse" />
+              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
+              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-4/6 animate-pulse" />
+              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
+            </div>
+          ) : (
+            <p className="text-[14px] text-[#3C3C43] leading-relaxed">{text}</p>
+          )}
+        </div>
+
+        <div className="bg-[#0F0F10] rounded-[20px] p-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-[10px] bg-[#C8E635]/20 flex items-center justify-center flex-shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C8E635" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-[12px] font-bold text-white">Étape suivante</p>
+            <p className="text-[11px] text-white/40">Calcul du chrono et génération du plan</p>
+          </div>
+        </div>
       </div>
+
+      <ContinueBtn disabled={loading} onClick={onNext} label="Voir ma prévision →" />
     </div>
   );
 }
@@ -1001,11 +1069,9 @@ function ChatContent() {
   const [goalAssessment, setGoalAssessment] = useState<GoalAssessment | null>(null);
   const [garminSummary, setGarminSummary] = useState<GarminActivitySummary | null>(null);
 
-  // Debug reflect screen
-  const [reflectText, setReflectText] = useState('');
-  const [reflectLoading, setReflectLoading] = useState(false);
-  const [reflectNextPhase, setReflectNextPhase] = useState<Phase>('step2');
-  const [reflectStep, setReflectStep] = useState(1);
+  // Summary screen
+  const [summaryText, setSummaryText] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const fetchGarminSummary = async (): Promise<GarminActivitySummary | undefined> => {
     const tokens = loadGarminTokens();
@@ -1022,21 +1088,19 @@ function ChatContent() {
     return undefined;
   };
 
-  const triggerReflect = (nextPhase: Phase, step: number, onboarding: Partial<OnboardingData>) => {
-    setReflectNextPhase(nextPhase);
-    setReflectStep(step);
-    setReflectText('');
-    setReflectLoading(true);
-    setPhase('reflect');
+  const triggerSummary = (onboarding: Partial<OnboardingData>, garmin?: GarminActivitySummary) => {
+    setSummaryText('');
+    setSummaryLoading(true);
+    setPhase('summary');
     fetch('/api/reflect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ onboarding, step }),
+      body: JSON.stringify({ onboarding, garmin }),
     })
       .then(r => r.json())
-      .then((d: { reflection?: string }) => setReflectText(d.reflection ?? ''))
-      .catch(() => setReflectText('Erreur lors de la réflexion Gemini.'))
-      .finally(() => setReflectLoading(false));
+      .then((d: { reflection?: string }) => setSummaryText(d.reflection ?? ''))
+      .catch(() => setSummaryText('Analyse indisponible.'))
+      .finally(() => setSummaryLoading(false));
   };
 
   const fetchGeminiPlan = async (onboarding: OnboardingData, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
@@ -1275,12 +1339,16 @@ function ChatContent() {
 
   // ── Phase renders ──────────────────────────────────────────────────────────
 
-  if (phase === 'reflect') return (
-    <ReflectScreen
-      step={reflectStep}
-      loading={reflectLoading}
-      text={reflectText}
-      onNext={() => setPhase(reflectNextPhase)}
+  if (phase === 'summary') return (
+    <SummaryScreen
+      loading={summaryLoading}
+      text={summaryText}
+      onNext={() => setPhase('step7')}
+      goalType={goalType ?? 'road'}
+      raceName={raceName} raceDistanceKm={raceDistanceKm}
+      raceElevationGain={raceElevationGain} raceDate={raceDate}
+      fitnessState={fitnessState} weeklySessions={weeklySessions}
+      hasGarmin={!!garminSummary}
     />
   );
 
@@ -1294,18 +1362,12 @@ function ChatContent() {
   );
 
   if (phase === 'step1') return (
-    <Step1GoalType images={blobImages} onSelect={(t) => {
-      setGoalType(t);
-      triggerReflect('step2', 1, { goalType: t });
-    }} />
+    <Step1GoalType images={blobImages} onSelect={(t) => { setGoalType(t); setPhase('step2'); }} />
   );
 
   if (phase === 'step2') return (
     <Step2Priority
-      onSelect={(p) => {
-        setRacePriority(p);
-        triggerReflect('step3', 2, { goalType: goalType ?? undefined, racePriority: p });
-      }}
+      onSelect={(p) => { setRacePriority(p); setPhase('step3'); }}
       onBack={() => setPhase('step1')}
     />
   );
@@ -1323,43 +1385,21 @@ function ChatContent() {
         else if (field === 'raceElevationGain') setRaceElevationGain(val);
         else if (field === 'raceGoalTime') setRaceGoalTime(val);
       }}
-      onConfirm={() => triggerReflect('step4', 3, {
-        goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
-        raceName: raceName || undefined, raceDate: raceDate || undefined,
-        raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
-        raceGoalTime: raceGoalTime || undefined,
-      })}
+      onConfirm={() => setPhase('step4')}
       onBack={() => setPhase('step2')}
     />
   );
 
   if (phase === 'step4') return (
     <Step4FitnessState
-      onSelect={(s) => {
-        setFitnessState(s);
-        triggerReflect('step5', 4, {
-          goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
-          raceName: raceName || undefined, raceDate: raceDate || undefined,
-          raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
-          raceGoalTime: raceGoalTime || undefined, fitnessState: s,
-        });
-      }}
+      onSelect={(s) => { setFitnessState(s); setPhase('step5'); }}
       onBack={() => setPhase('step3')}
     />
   );
 
   if (phase === 'step5') return (
     <Step5WeeklyRhythm
-      onSelect={(s) => {
-        setWeeklySessions(s);
-        triggerReflect('step6', 5, {
-          goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
-          raceName: raceName || undefined, raceDate: raceDate || undefined,
-          raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
-          raceGoalTime: raceGoalTime || undefined, fitnessState: fitnessState ?? undefined,
-          weeklySessions: s,
-        });
-      }}
+      onSelect={(s) => { setWeeklySessions(s); setPhase('step6'); }}
       onBack={() => setPhase('step4')}
     />
   );
@@ -1368,15 +1408,19 @@ function ChatContent() {
     <Step6TrainingEnv
       onSelect={(e) => {
         setTrainingEnv(e);
-        // Pre-fetch Garmin data in background so Step7 estimate is accurate
-        if (!garminSummary) fetchGarminSummary().catch(() => {});
-        triggerReflect('step7', 6, {
+        const onboarding: Partial<OnboardingData> = {
           goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
           raceName: raceName || undefined, raceDate: raceDate || undefined,
           raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
           raceGoalTime: raceGoalTime || undefined, fitnessState: fitnessState ?? undefined,
           weeklySessions: weeklySessions ?? undefined, trainingEnv: e,
-        });
+        };
+        // Fetch Garmin data in parallel with summary call
+        if (!garminSummary) {
+          fetchGarminSummary().then(g => triggerSummary(onboarding, g)).catch(() => triggerSummary(onboarding));
+        } else {
+          triggerSummary(onboarding, garminSummary);
+        }
       }}
       onBack={() => setPhase('step5')}
     />
@@ -1396,7 +1440,7 @@ function ChatContent() {
       onLaunch={handleStep7Launch}
       launching={launching}
       launchStatus={launchStatus}
-      onBack={() => setPhase('step6')}
+      onBack={() => setPhase('summary')}
     />
   );
 
