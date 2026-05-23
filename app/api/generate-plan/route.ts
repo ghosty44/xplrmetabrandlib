@@ -143,7 +143,10 @@ function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivity
 
 // ── Prompt template — pure generation instructions, no athlete data ────────────
 
-function buildPlanPrompt(athleteContext: string, weeksCount: number, sessionsPerWeek: number, isTrail: boolean): string {
+function buildPlanPrompt(athleteContext: string, weeksCount: number, sessionsPerWeek: number, isTrail: boolean, weeklyVolumes: number[]): string {
+  const volumeTable = weeklyVolumes
+    .map((km, i) => `| Semaine ${i + 1} | ${km} km |`)
+    .join('\n');
   return `# Role
 Tu es RunAI, un coach de course à pied expert en planification d'entraînement, physiologie du sport et périodisation. Tu maîtrises l'analyse des données Garmin, la biomécanique trail/route, et la construction de plans individualisés basés sur les données réelles de l'athlète.
 
@@ -190,17 +193,26 @@ Applique silencieusement ces valeurs par défaut si nécessaire :
 - "verdict" : "réaliste" (±5% du niveau actuel), "ambitieux" (>5% d'amélioration requise), "sous-estimé" (objectif plus lent que le niveau actuel), "excellent".
 - "message" : 2 à 3 phrases bienveillantes, personnalisées et motivantes.
 
-## 5. Règles du plan d'entraînement (array "sessions") — NON NÉGOCIABLES
+## 5. Volumes hebdomadaires IMPOSÉS (km) — NON NÉGOCIABLES
+
+Le volume TOTAL de chaque semaine est PRÉ-CALCULÉ par le backend (périodisation 3+1, affûtage final inclus). Tu DOIS respecter EXACTEMENT ces volumes (tolérance ±5%).
+
+| Semaine | Volume cible |
+|---|---|
+${volumeTable}
+
+Distribue les séances de chaque semaine pour atteindre PRÉCISÉMENT son volume cible. Le champ "km" de chaque session, additionné sur la semaine, DOIT égaler le volume imposé. **Tu ne calcules pas de progression ni de récupération — c'est déjà fait pour toi.**
+
+## 6. Règles du plan d'entraînement (array "sessions") — NON NÉGOCIABLES
 
 - Intensités : "easy" (Z2), "moderate" (Z3), "hard" (Z4–Z5), "long" (Z2, durée +25%), "recovery" (Z1), "hill"${isTrail ? ' (OBLIGATOIRE dès sem. 3)' : ''}, "strength".
 - Répartition : EXACTEMENT ${sessionsPerWeek} séances par semaine, placées uniquement sur les "availableDays".
 - Règle 80/20 : ≥ 80% en easy/long/recovery ; ≤ 20% en moderate/hard/hill.
-- Progression : jamais plus de +10% de volume (km) d'une semaine à l'autre.
-- Périodisation : cycle de 3 semaines de charge + 1 semaine d'assimilation (−15% volume).
-- Affûtage (Tapering) : les 1 à 2 dernières semaines. Le volume chute, l'intensité est maintenue. L'affûtage annule et remplace la règle de périodisation si elles se chevauchent.
+- Volume hebdo : conforme au tableau imposé ci-dessus (section 5). C'est la seule contrainte de volume.
+- Échauffement : avant toute séance "hard" ou "moderate", prévoir 20–25 min d'échauffement progressif (inclus dans totalMin et km de la séance).
 - Précision : "description" doit contenir les allures exactes (min/km), les durées et les consignes. Le plan ne doit jamais être tronqué — toutes les ${weeksCount} semaines.${isTrail ? '\n- Trail : D+ en sortie longue dès sem. 2, hill réguliers, volume final > 25 km D+.' : ''}
 
-## 6. Format de sortie strict
+## 7. Format de sortie strict
 
 Tu dois commencer par l'objet "_verification" pour raisonner et valider tes calculs avant de construire le plan.
 Retourne UNIQUEMENT ce JSON (sans backticks markdown) :
@@ -209,7 +221,8 @@ Retourne UNIQUEMENT ce JSON (sans backticks markdown) :
   "_verification": {
     "sessions_per_week_check": "<Vérifie que chaque semaine a exactement ${sessionsPerWeek} séances>",
     "days_used_check": "<Vérifie que seuls les availableDays sont utilisés>",
-    "ratio_80_20_check": "<Vérifie le respect du volume d'intensité>"
+    "ratio_80_20_check": "<Vérifie le respect du volume d'intensité>",
+    "weekly_volume_check": "<Pour chaque semaine, somme les km des sessions et confirme qu'elle correspond au volume imposé (±5%)>"
   },
   "profile": {
     "goalRace": "5k" | "10k" | "halfMarathon" | "marathon",
@@ -236,10 +249,51 @@ Retourne UNIQUEMENT ce JSON (sans backticks markdown) :
 
 // ── Public builder (called by POST handler) ────────────────────────────────────
 
+function estimateStartKm(onboarding: OnboardingData, garmin?: GarminActivitySummary): number {
+  if (garmin?.weeklyKm4w && garmin.weeklyKm4w > 5) return Math.round(garmin.weeklyKm4w);
+  const fitnessBase: Record<string, number> = { active: 25, break2w: 18, break3w: 14, break1m: 10 };
+  const base = fitnessBase[onboarding.fitnessState] ?? 20;
+  const sessionFactor = 1 + (onboarding.weeklySessions - 3) * 0.15;
+  return Math.round(base * sessionFactor);
+}
+
+function computeWeeklyVolumes(startKm: number, weeksCount: number): number[] {
+  type WeekType = 'load' | 'recovery' | 'taper' | 'race';
+  const types: WeekType[] = [];
+  for (let w = 1; w <= weeksCount; w++) {
+    if (w === weeksCount) types.push('race');
+    else if (w === weeksCount - 1) types.push('taper');
+    else if (w % 4 === 0) types.push('recovery');
+    else types.push('load');
+  }
+
+  const volumes: number[] = new Array(weeksCount);
+  const loadIdxs = types.map((t, i) => t === 'load' ? i : -1).filter(i => i >= 0);
+  const peakKm = Math.round(startKm * 1.4);
+
+  loadIdxs.forEach((idx, i) => {
+    const progress = loadIdxs.length <= 1 ? 1 : i / (loadIdxs.length - 1);
+    volumes[idx] = Math.round(startKm + (peakKm - startKm) * progress);
+  });
+
+  for (let i = 0; i < weeksCount; i++) {
+    if (volumes[i] !== undefined) continue;
+    const prevLoad = i > 0 ? volumes[i - 1] : startKm;
+    const t = types[i];
+    if (t === 'recovery') volumes[i] = Math.round(prevLoad * 0.85);
+    else if (t === 'taper') volumes[i] = Math.round(prevLoad * 0.7);
+    else if (t === 'race') volumes[i] = Math.round(prevLoad * 0.5);
+  }
+
+  return volumes;
+}
+
 function buildPrompt(onboarding: OnboardingData, weeksCount: number, garmin?: GarminActivitySummary): string {
   const isTrail = onboarding.goalType === 'trail';
   const athleteContext = buildAthleteContext(onboarding, garmin);
-  return buildPlanPrompt(athleteContext, weeksCount, onboarding.weeklySessions, isTrail);
+  const startKm = estimateStartKm(onboarding, garmin);
+  const weeklyVolumes = computeWeeklyVolumes(startKm, weeksCount);
+  return buildPlanPrompt(athleteContext, weeksCount, onboarding.weeklySessions, isTrail, weeklyVolumes);
 }
 
 export async function POST(req: NextRequest) {
