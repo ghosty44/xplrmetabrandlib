@@ -897,10 +897,11 @@ function Step7Result({
 type PlanChatMessage = { role: 'user' | 'model'; content: string; planUpdated?: boolean };
 
 function PlanPreview({
-  plan, goalAssessment, onConfirm, onBack, onPlanUpdate,
+  plan, goalAssessment, garmin, onConfirm, onBack, onPlanUpdate,
 }: {
   plan: TrainingPlan;
   goalAssessment?: GoalAssessment | null;
+  garmin?: GarminActivitySummary | null;
   onConfirm: () => void;
   onBack: () => void;
   onPlanUpdate: (plan: TrainingPlan) => void;
@@ -1089,6 +1090,38 @@ function PlanPreview({
                 <p className="text-[13px] font-bold text-[#0F0F10]">Raisonnement complet</p>
                 <p className="text-[11px] text-[#8E8E93] mt-0.5">Pourquoi ce temps cible, pourquoi ces entraînements</p>
               </div>
+
+              {/* Garmin data */}
+              {garmin && (
+                <div className="px-5 py-4 border-b border-[#F2F2F7]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-5 h-5 rounded-[6px] bg-[#007AFF] flex items-center justify-center flex-shrink-0">
+                      <span className="text-white font-black text-[9px]">G</span>
+                    </div>
+                    <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em]">Données Garmin utilisées</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { label: 'Volume moy. 4 sem.', value: `${Math.round(garmin.weeklyKm4w)} km/sem` },
+                      { label: 'Volume moy. 8 sem.', value: `${Math.round(garmin.weeklyKm8w)} km/sem` },
+                      { label: 'Plus longue sortie', value: `${Math.round(garmin.longestRunKm)} km` },
+                      { label: 'Séances/semaine', value: `${garmin.avgSessionsPerWeek.toFixed(1)}/sem` },
+                      { label: 'Allure moyenne récente', value: `${Math.floor(garmin.recentAvgPaceSecKm / 60)}'${String(garmin.recentAvgPaceSecKm % 60).padStart(2, '0')}'' /km` },
+                      ...(garmin.vo2Max != null ? [{ label: 'VO2max', value: `${garmin.vo2Max} ml/kg/min` }] : []),
+                      ...(garmin.lactateThresholdSpeedMps != null ? [{ label: 'Seuil lactique Garmin', value: `${Math.floor(Math.round(1000 / garmin.lactateThresholdSpeedMps) / 60)}'${String(Math.round(1000 / garmin.lactateThresholdSpeedMps) % 60).padStart(2, '0')}'' /km`, accent: true }] : []),
+                      ...(garmin.lactateThresholdHR != null ? [{ label: 'FC seuil', value: `${garmin.lactateThresholdHR} bpm` }] : []),
+                    ].map(({ label, value, accent }) => (
+                      <div key={label} className={`rounded-[10px] p-2.5 ${accent ? 'bg-[#007AFF]/10 col-span-2' : 'bg-[#F8F8F8]'}`}>
+                        <p className={`text-[9px] font-semibold uppercase tracking-[0.08em] mb-0.5 ${accent ? 'text-[#007AFF]' : 'text-[#C7C7CC]'}`}>{label}</p>
+                        <p className={`text-[13px] font-black tabular-nums ${accent ? 'text-[#007AFF]' : 'text-[#0F0F10]'}`}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {!garmin.lactateThresholdSpeedMps && (
+                    <p className="text-[10px] text-[#FF9500] mt-2">⚠ Seuil lactique non disponible dans Garmin — allure seuil estimée depuis le chrono cible</p>
+                  )}
+                </div>
+              )}
 
               {/* Time target computation */}
               <div className="px-5 py-4 border-b border-[#F2F2F7]">
@@ -1843,6 +1876,7 @@ function ChatContent() {
     <PlanPreview
       plan={generatedPlan}
       goalAssessment={goalAssessment}
+      garmin={garminSummary}
       onConfirm={handleConfirmPlan}
       onBack={() => setPhase('step7')}
       onPlanUpdate={setGeneratedPlan}
