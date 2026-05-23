@@ -206,6 +206,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Aucune séance valide reçue de Gemini' });
     }
 
+    // Enforce availableDays: guarantee exact session count per week regardless of Gemini compliance
+    const days = profile.availableDays?.length ? profile.availableDays : [2, 4, 6];
+    const maxPerWeek = days.length;
+    const byWeek = new Map<number, GeminiSession[]>();
+    for (const s of sessions) {
+      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+      byWeek.get(s.week)!.push(s);
+    }
+    sessions = [];
+    for (const [, ws] of byWeek) {
+      const limited = ws.slice(0, maxPerWeek);
+      limited.forEach((s, i) => { s.day = days[i]; });
+      sessions.push(...limited);
+    }
+
     return NextResponse.json({ sessions, goalAssessment });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erreur inconnue';
