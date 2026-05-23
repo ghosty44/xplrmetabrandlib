@@ -67,8 +67,8 @@ function buildGarminSection(summary: GarminActivitySummary): string {
 
   lines.push(
     '',
-    '→ Utilise ces données RÉELLES pour calibrer le volume hebdo, les allures et la progression.',
-    '→ Ignore les estimations du profil si elles contredisent ces données Garmin.',
+    '→ Utilise ces données RÉELLES pour calibrer le VOLUME hebdo, les ALLURES et la PROGRESSION.',
+    '→ Les données Garmin corrigent uniquement les allures et le volume — PAS le nombre de séances ni les jours disponibles.',
     '═══════════════════════════════════════',
   );
   return lines.join('\n');
@@ -121,7 +121,7 @@ VALEURS intensity :
 - "strength" : renforcement musculaire (gainage, squats, fentes, mollets)
 
 RÈGLES PHYSIOLOGIQUES (non négociables) :
-1. Utilise EXCLUSIVEMENT les jours ${JSON.stringify(profile.availableDays ?? [2, 4, 6])}
+1. Utilise EXCLUSIVEMENT les jours ${JSON.stringify(profile.availableDays ?? [2, 4, 6])} — exactement ${profile.availableDays?.length ?? 3} séance(s) de course par semaine, jamais plus, jamais moins. Les données Garmin n'autorisent PAS à ajouter des jours supplémentaires.
 2. Règle 80/20 : 80% du volume total en easy/long/recovery, max 20% en moderate/hard/hill
 3. Progression : jamais +10% de volume hebdo
 4. Périodisation : 3 semaines de charge + 1 semaine récupération (−15 à −20%) toutes les 4 semaines
