@@ -134,6 +134,47 @@ function buildProfile(
   } as UserProfile;
 }
 
+// ── Onboarding context builder for Gemini ────────────────────────────────────
+
+function buildOnboardingContext(
+  goalType: GoalType,
+  raceName: string, raceDate: string, raceDistanceKm: string, raceElevationGain: string,
+  racePriority: 'main' | 'secondary' | null,
+  fitnessState: FitnessState,
+  weeklySessions: number,
+  trainingEnv: TrainingEnv,
+): string {
+  const GOAL_LABELS: Record<GoalType, string> = { road: 'course sur route', trail: 'trail', beginner: 'programme débutant', injury: 'reprise après blessure', test: 'test de niveau' };
+  const FITNESS_LABELS: Record<FitnessState, string> = { active: 'je cours régulièrement sans interruption', break2w: "j'ai fait une pause de 2 à 3 semaines récemment", break3w: "j'ai fait une pause de 3 à 4 semaines", break1m: "j'ai fait une pause de plus d'un mois" };
+  const ENV_LABELS: Record<TrainingEnv, string> = { flat: 'terrain plat uniquement, pas de côte', bump: 'petite butte, montées courtes (< 2 min)', hill: 'colline, montées 2-4 min', mountain: 'petite montagne, montées 4-6 min', cols: 'longs cols, montées prolongées' };
+  const weeklyKmEst = ([0, 0, 0, 25, 35, 45, 55] as number[])[weeklySessions] ?? 25;
+  const isTrail = goalType === 'trail';
+  const raceTerrainLabel = isTrail ? 'trail (sentiers/montagne)' : trainingEnv === 'flat' ? 'route plate' : 'route vallonnée';
+
+  return [
+    `Voici toutes mes informations pour créer mon plan d'entraînement :`,
+    ``,
+    `TYPE D'OBJECTIF : ${GOAL_LABELS[goalType]}`,
+    raceName ? `NOM DE LA COURSE : ${raceName}` : '',
+    raceDistanceKm ? `DISTANCE : ${raceDistanceKm} km` : '',
+    isTrail && raceElevationGain ? `DÉNIVELÉ POSITIF : ${raceElevationGain} m` : '',
+    raceDate ? `DATE DE LA COURSE : ${raceDate}` : '',
+    racePriority ? `IMPORTANCE : ${racePriority === 'main' ? 'objectif principal (pic de forme ce jour-là)' : 'objectif secondaire (pour se tester)'}` : '',
+    ``,
+    `MON PROFIL :`,
+    `- Terrain de la course : ${raceTerrainLabel}`,
+    `- État de forme actuel : ${FITNESS_LABELS[fitnessState]}`,
+    `- Volume actuel estimé : ${weeklyKmEst} km/semaine en ${weeklySessions} séances`,
+    `- Terrain d'entraînement disponible : ${ENV_LABELS[trainingEnv]}`,
+    `- Blessures récentes : aucune`,
+    `- Renforcement musculaire : 0 séance/semaine`,
+    ``,
+    `Tu as TOUTES les informations nécessaires. Ne pose AUCUNE question supplémentaire.`,
+    `Génère directement le bloc <PROFILE> et le bloc <EXPLANATION>.`,
+    `Pour goalTimeMin et thresholdPaceSec : utilise ton expertise de coach pour estimer un chrono réaliste selon ces données.`,
+  ].filter(s => s !== null && s !== undefined && !(s === '' && false)).join('\n');
+}
+
 // ── Shared UI primitives ──────────────────────────────────────────────────────
 
 function StepHeader({ step, onBack }: { step: number; onBack?: () => void }) {
@@ -544,14 +585,15 @@ function Step6TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => 
 
 function Step7Result({
   goalType, raceName, raceDistanceKm, raceElevationGain, raceDate,
-  fitnessState, weeklySessions, trainingEnv, image,
-  onConfirm, onBack,
+  fitnessState, weeklySessions, image,
+  onLaunch, launching, onBack,
 }: {
   goalType: GoalType;
   raceName: string; raceDistanceKm: string; raceElevationGain: string; raceDate: string;
-  fitnessState: FitnessState; weeklySessions: 3 | 4 | 5 | 6; trainingEnv: TrainingEnv;
+  fitnessState: FitnessState; weeklySessions: 3 | 4 | 5 | 6;
   image?: string;
-  onConfirm: (profile: UserProfile, plan: TrainingPlan) => void;
+  onLaunch: () => void;
+  launching: boolean;
   onBack: () => void;
 }) {
   const dist = parseFloat(raceDistanceKm) || 10;
@@ -573,17 +615,6 @@ function Step7Result({
     const diff = Math.round((new Date(raceDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 7));
     return Math.max(4, Math.min(diff, 24));
   })();
-
-  const handleLaunch = () => {
-    const profile = buildProfile(goalType, raceDate, raceDistanceKm, raceElevationGain, fitnessState, weeklySessions, trainingEnv);
-    let plan: TrainingPlan;
-    try {
-      plan = generatePlan(profile);
-    } catch {
-      plan = { profile, sessions: [] } as unknown as TrainingPlan;
-    }
-    onConfirm(profile, plan);
-  };
 
   return (
     <div className="min-h-screen bg-[#0F0F10] flex flex-col relative overflow-hidden">
@@ -626,10 +657,18 @@ function Step7Result({
         </div>
       </div>
 
+      {launching && (
+        <div className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+          <div className="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+          <p className="text-white text-[15px] font-semibold">Génération de ton plan…</p>
+          <p className="text-white/40 text-[12px]">Gemini analyse ton profil</p>
+        </div>
+      )}
+
       <div className="fixed bottom-8 inset-x-0 px-5 max-w-md mx-auto z-20 left-0 right-0">
-        <button onClick={handleLaunch}
-          className="w-full py-4 rounded-[20px] bg-white text-[#0F0F10] text-[15px] font-black transition-all active:scale-[0.98]">
-          Découvrir mon plan →
+        <button onClick={onLaunch} disabled={launching}
+          className="w-full py-4 rounded-[20px] bg-white text-[#0F0F10] text-[15px] font-black disabled:opacity-50 transition-all active:scale-[0.98]">
+          {launching ? 'Génération en cours…' : 'Découvrir mon plan →'}
         </button>
       </div>
     </div>
@@ -736,6 +775,48 @@ function ChatContent() {
   const [weeklySessions, setWeeklySessions] = useState<3 | 4 | 5 | 6 | null>(null);
   const [trainingEnv, setTrainingEnv] = useState<TrainingEnv | null>(null);
   const [blobImages, setBlobImages] = useState<string[]>([]);
+  const [launching, setLaunching] = useState(false);
+  const [racePriority, setRacePriority] = useState<'main' | 'secondary' | null>(null);
+
+  const handleStep7Launch = async () => {
+    setLaunching(true);
+    try {
+      const context = buildOnboardingContext(
+        goalType ?? 'road', raceName, raceDate, raceDistanceKm, raceElevationGain,
+        racePriority, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat',
+      );
+      const welcome: ChatMessage = { role: 'model', content: 'Bonjour ! Je suis ton coach RunAI.' };
+      const ctxMsg: ChatMessage = { role: 'user', content: context, hidden: true };
+      const msgs: ChatMessage[] = [welcome, ctxMsg];
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: msgs }),
+      });
+      const data = await res.json() as { profile?: UserProfile; message?: string };
+
+      let profile: UserProfile;
+      if (data.profile) {
+        profile = data.profile;
+      } else {
+        // Gemini didn't return a PROFILE — fallback to algo
+        profile = buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat');
+      }
+      let plan: TrainingPlan;
+      try { plan = generatePlan(profile); }
+      catch { plan = { profile, sessions: [] } as unknown as TrainingPlan; }
+      setGeneratedPlan(plan);
+      setPhase('preview');
+    } catch {
+      // Full fallback
+      const profile = buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, fitnessState ?? 'active', weeklySessions ?? 3, trainingEnv ?? 'flat');
+      try { setGeneratedPlan(generatePlan(profile)); } catch { setGeneratedPlan({ profile, sessions: [] } as unknown as TrainingPlan); }
+      setPhase('preview');
+    } finally {
+      setLaunching(false);
+    }
+  };
 
   useEffect(() => {
     fetch('/api/blob-images')
@@ -891,7 +972,7 @@ function ChatContent() {
 
   if (phase === 'step2') return (
     <Step2Priority
-      onSelect={(p) => { setPhase('step3'); void p; }}
+      onSelect={(p) => { setRacePriority(p); setPhase('step3'); }}
       onBack={() => setPhase('step1')}
     />
   );
@@ -940,9 +1021,9 @@ function ChatContent() {
       raceElevationGain={raceElevationGain} raceDate={raceDate}
       fitnessState={fitnessState ?? 'active'}
       weeklySessions={weeklySessions ?? 3}
-      trainingEnv={trainingEnv ?? 'flat'}
       image={blobImages[goalType === 'trail' ? 1 : 0] ?? blobImages[0]}
-      onConfirm={(profile, plan) => { setGeneratedPlan(plan); void profile; setPhase('preview'); }}
+      onLaunch={handleStep7Launch}
+      launching={launching}
       onBack={() => setPhase('step6')}
     />
   );
