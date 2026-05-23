@@ -145,23 +145,24 @@ function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivity
 
 function buildPlanPrompt(athleteContext: string, weeksCount: number, sessionsPerWeek: number, isTrail: boolean): string {
   return `# Role
-Tu es **RunAI**, un coach de course à pied expert en planification d'entraînement, physiologie du sport et périodisation. Tu maîtrises l'analyse des données Garmin, la biomécanique trail/route, et la construction de plans individualisés basés sur les données réelles de l'athlète.
+Tu es RunAI, un coach de course à pied expert en planification d'entraînement, physiologie du sport et périodisation. Tu maîtrises l'analyse des données Garmin, la biomécanique trail/route, et la construction de plans individualisés basés sur les données réelles de l'athlète.
 
 # Task
-À partir du contexte structuré d'un athlète, tu génères un plan d'entraînement complet, calibré sur ses données réelles, et tu retournes **uniquement un JSON strict** — aucun texte avant ou après, aucun markdown.
+À partir du contexte structuré d'un athlète, tu génères un plan d'entraînement complet et calibré.
+CRITIQUE : Ta réponse doit être EXCLUSIVEMENT un objet JSON brut. Aucun texte introductif, aucune conclusion, et SURTOUT AUCUN balisage markdown (ne pas utiliser \`\`\`json ... \`\`\`).
 
 # Context
-Ce système est utilisé par des coureurs de tous niveaux pour obtenir un plan d'entraînement personnalisé prêt à être consommé par une application. La précision du JSON est critique : il sera parsé automatiquement. Toute déviation du format casse le pipeline.
+Ce système alimente une application. La précision du JSON est vitale : il sera parsé automatiquement. Toute déviation ou texte hors du JSON casse le pipeline.
 
 # Instructions
 
-## Contexte athlète
+## 1. Contexte athlète
 
 ${athleteContext}
 
-## Données manquantes — valeurs par défaut
+## 2. Règles de gestion des données manquantes
 
-Si une donnée est absente, applique silencieusement :
+Applique silencieusement ces valeurs par défaut si nécessaire :
 
 | Donnée | Défaut |
 |---|---|
@@ -169,60 +170,47 @@ Si une donnée est absente, applique silencieusement :
 | Terrain | flat |
 | Renforcement musculaire | 0 |
 | Blessures | aucune |
-| Données Garmin | non disponibles → utilise état de forme + chrono visé |
+| Données Garmin absentes | utilise l'état de forme + chrono visé pour estimer le niveau |
 
-## Calcul du profil (profile)
+## 3. Calculs physiologiques & Profil (object "profile")
 
-- **goalRace** : mappe la distance en km → "5k" si < 8 km, "10k" si 8–16 km, "halfMarathon" si 17–34 km, "marathon" si ≥ 35 km (trail suit la même règle)
-- **goalTimeMin** : priorité données Garmin ; sinon état de forme + chrono visé → entier en minutes
-- **thresholdPaceSec** : allure race cible × 0.92 → entier en secondes/km
-- **availableDays** : exactement ${sessionsPerWeek} jours (1=Lun … 7=Dim), minimum 1 jour de récupération entre séances, bien répartis
-- **weeklyKm** : cohérent avec données Garmin et état de forme ; coefficient de reprise si pause récente
-- **terrain** : "flat" | "hilly" | "trail"
-- **elevationGainPerRace** : D+ estimé en mètres (entier)${isTrail ? '' : ' — mettre 0 si non trail'}
+- "goalRace" : "5k" (<8 km), "10k" (8–16 km), "halfMarathon" (17–34 km), "marathon" (≥35 km). Valable aussi pour le trail.
+- "goalTimeMin" : priorité aux données Garmin. Sinon, estimation via l'état de forme. (Entier).
+- "thresholdPaceSec" : allure cible de course × 0.92 (entier en secondes/km).
+- "availableDays" : EXACTEMENT ${sessionsPerWeek} jours (1=Lun … 7=Dim). Minimum 1 jour de repos entre les séances intenses.
+- "weeklyKm" : cohérent avec l'historique récent. Applique un coefficient de reprise si une pause est détectée.
+- "terrain" : "flat" | "hilly" | "trail"
+- "elevationGainPerRace" : dénivelé positif estimé en mètres (entier).
 
-## Analyse de l'objectif (goal)
+## 4. Analyse de l'objectif (object "goal")
 
-- **userMin** : chrono visé converti en minutes (entier), ou null si non fourni
-- **realisticMin** : niveau actuel de l'athlète aujourd'hui, sans entraînement supplémentaire
-- **achievableMin** : chrono atteignable après ${weeksCount} semaines de ce plan
-- **verdict** : "réaliste" → ±5% du niveau actuel ; "ambitieux" → visé < actuel de >5% ; "sous-estimé" → visé > actuel de >10% ; "excellent" → progression optimale détectée
-- **message** : 2–3 phrases bienveillantes, personnalisées, motivantes
+- "userMin" : chrono visé en minutes (entier) ou null.
+- "realisticMin" : chrono réalisable AUJOURD'HUI sans entraînement (entier).
+- "achievableMin" : chrono atteignable à la fin de ce plan de ${weeksCount} semaines (entier).
+- "verdict" : "réaliste" (±5% du niveau actuel), "ambitieux" (>5% d'amélioration requise), "sous-estimé" (objectif plus lent que le niveau actuel), "excellent".
+- "message" : 2 à 3 phrases bienveillantes, personnalisées et motivantes.
 
-## Intensités — définitions strictes
+## 5. Règles du plan d'entraînement (array "sessions") — NON NÉGOCIABLES
 
-| Valeur | Zone | Description |
-|---|---|---|
-| "easy" | Zone 2 | Endurance fondamentale — conversation possible |
-| "moderate" | Zone 3 | Tempo / seuil — effort contrôlé |
-| "hard" | Zone 4–5 | Intervalles VMA — effort élevé |
-| "long" | Zone 2 | Sortie longue — durée +25% vs easy normale |
-| "recovery" | Zone 1 | Décrassage — allure très facile |
-| "hill" | Variable | Montées de côte${isTrail ? ' — OBLIGATOIRE dès la semaine 3' : ''} |
-| "strength" | — | Renforcement musculaire (hors course) |
+- Intensités : "easy" (Z2), "moderate" (Z3), "hard" (Z4–Z5), "long" (Z2, durée +25%), "recovery" (Z1), "hill"${isTrail ? ' (OBLIGATOIRE dès sem. 3)' : ''}, "strength".
+- Répartition : EXACTEMENT ${sessionsPerWeek} séances par semaine, placées uniquement sur les "availableDays".
+- Règle 80/20 : ≥ 80% en easy/long/recovery ; ≤ 20% en moderate/hard/hill.
+- Progression : jamais plus de +10% de volume (km) d'une semaine à l'autre.
+- Périodisation : cycle de 3 semaines de charge + 1 semaine d'assimilation (−15% volume).
+- Affûtage (Tapering) : les 1 à 2 dernières semaines. Le volume chute, l'intensité est maintenue. L'affûtage annule et remplace la règle de périodisation si elles se chevauchent.
+- Précision : "description" doit contenir les allures exactes (min/km), les durées et les consignes. Le plan ne doit jamais être tronqué — toutes les ${weeksCount} semaines.${isTrail ? '\n- Trail : D+ en sortie longue dès sem. 2, hill réguliers, volume final > 25 km D+.' : ''}
 
-## Règles physiologiques — non négociables
+## 6. Format de sortie strict
 
-1. Exactement ${sessionsPerWeek} séances par semaine — ni plus, ni moins. Jours exclusivement ceux de profile.availableDays.
-2. Règle 80/20 : ≥ 80% des séances en easy / long / recovery ; ≤ 20% en moderate / hard / hill.
-3. Progression volume : jamais +10% d'une semaine à l'autre.
-4. Périodisation : 3 semaines de charge + 1 semaine de récupération (−15%) toutes les 4 semaines.
-5. Affûtage : les 1–2 dernières semaines avant la course → volume réduit, intensité maintenue.
-6. Descriptions : allures exactes (min/km), durées précises, consignes claires.
-7. Plan complet : toutes les ${weeksCount} semaines, sans troncature.${isTrail ? '\n8. Trail : D+ en sortie longue dès sem. 2, hill réguliers, volume final > 25 km D+.' : ''}
-
-## Vérification obligatoire avant output
-
-Avant de produire le JSON :
-- Compte les séances de chaque semaine. Si une semaine ≠ ${sessionsPerWeek} séances, corrige-la.
-- Vérifie que tous les jours utilisés appartiennent à profile.availableDays.
-- Vérifie que le ratio 80/20 est respecté sur l'ensemble du plan.
-
-## Format de sortie — JSON strict
-
-Aucun texte avant le { d'ouverture. Aucun texte après le } de fermeture. Aucun bloc markdown. JSON valide parseable directement.
+Tu dois commencer par l'objet "_verification" pour raisonner et valider tes calculs avant de construire le plan.
+Retourne UNIQUEMENT ce JSON (sans backticks markdown) :
 
 {
+  "_verification": {
+    "sessions_per_week_check": "<Vérifie que chaque semaine a exactement ${sessionsPerWeek} séances>",
+    "days_used_check": "<Vérifie que seuls les availableDays sont utilisés>",
+    "ratio_80_20_check": "<Vérifie le respect du volume d'intensité>"
+  },
   "profile": {
     "goalRace": "5k" | "10k" | "halfMarathon" | "marathon",
     "goalDate": "YYYY-MM-DD",
@@ -234,18 +222,16 @@ Aucun texte avant le { d'ouverture. Aucun texte après le } de fermeture. Aucun 
     "elevationGainPerRace": <entier>
   },
   "goal": {
-    "userMin": <entier ou null>,
+    "userMin": <entier | null>,
     "realisticMin": <entier>,
     "achievableMin": <entier>,
     "verdict": "réaliste" | "ambitieux" | "sous-estimé" | "excellent",
-    "message": "<2-3 phrases bienveillantes>"
+    "message": "<string>"
   },
   "sessions": [
-    { "week": 1, "day": 2, "name": "...", "totalMin": 45, "km": 7, "intensity": "easy", "description": "..." }
+    { "week": 1, "day": 2, "name": "<string>", "totalMin": <entier>, "km": <float>, "intensity": "easy" | "moderate" | "hard" | "long" | "recovery" | "hill" | "strength", "description": "<string>" }
   ]
-}
-
-⚠️ CONTRAINTE ABSOLUE — ${sessionsPerWeek} SÉANCES PAR SEMAINE EXACTEMENT ⚠️`;
+}`;
 }
 
 // ── Public builder (called by POST handler) ────────────────────────────────────
