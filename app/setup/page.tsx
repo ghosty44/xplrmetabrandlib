@@ -74,9 +74,19 @@ function getQuickReplies(lastBotMsg: string, allMessages: ChatMessage[]): string
 function estimateFinishMin(
   dist: number, elev: number, isTrail: boolean,
   sessions: number, fitness: FitnessState,
+  garminPaceSec?: number,
 ): number {
-  const km = ([0, 0, 0, 25, 35, 45, 55] as number[])[sessions] ?? 25;
   const fitMult: Record<FitnessState, number> = { active: 1.0, break2w: 1.12, break3w: 1.20, break1m: 1.30 };
+
+  if (garminPaceSec && garminPaceSec > 0) {
+    // Race effort ≈ 93% of training pace; for trail add Naismith (+1km per 100m D+)
+    const racePaceSec = garminPaceSec * fitMult[fitness] * 0.93;
+    const effectiveKm = isTrail ? dist + elev / 100 : dist;
+    return Math.round(effectiveKm * racePaceSec / 60);
+  }
+
+  // Fallback generic formula
+  const km = ([0, 0, 0, 25, 35, 45, 55] as number[])[sessions] ?? 25;
   let pace = km >= 50 ? 5.5 : km >= 35 ? 6.2 : km >= 25 ? 7.0 : 8.0;
   pace *= fitMult[fitness];
   return isTrail ? Math.round(dist * pace * 1.5 + elev / 8) : Math.round(dist * pace);
@@ -630,12 +640,13 @@ function Step6TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => 
 
 function Step7Result({
   goalType, raceName, raceDistanceKm, raceElevationGain, raceDate,
-  fitnessState, weeklySessions, image,
+  fitnessState, weeklySessions, garminPaceSec, image,
   onLaunch, launching, launchStatus, onBack,
 }: {
   goalType: GoalType;
   raceName: string; raceDistanceKm: string; raceElevationGain: string; raceDate: string;
   fitnessState: FitnessState; weeklySessions: 3 | 4 | 5 | 6;
+  garminPaceSec?: number;
   image?: string;
   onLaunch: () => void;
   launching: boolean;
@@ -645,7 +656,7 @@ function Step7Result({
   const dist = parseFloat(raceDistanceKm) || 10;
   const elev = parseFloat(raceElevationGain) || 0;
   const isTrail = goalType === 'trail';
-  const estimatedMin = estimateFinishMin(dist, elev, isTrail, weeklySessions, fitnessState);
+  const estimatedMin = estimateFinishMin(dist, elev, isTrail, weeklySessions, fitnessState, garminPaceSec);
 
   const GOAL_LABELS: Record<GoalType, string> = {
     road: 'Course route', trail: 'Trail', beginner: 'Débutant', injury: 'Reprise', test: 'Test niveau',
@@ -687,7 +698,7 @@ function Step7Result({
         <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-[28px] p-6 mb-4">
           <p className="text-[11px] font-semibold text-white/40 uppercase tracking-[0.15em] mb-3">Ta prévision de chrono</p>
           <p className="text-[56px] font-black text-white tabular-nums leading-none tracking-tight">{formatTime(estimatedMin)}</p>
-          <p className="text-[11px] text-white/30 mt-2">Estimé selon ton profil actuel</p>
+          <p className="text-[11px] text-white/30 mt-2">{garminPaceSec ? 'Calculé depuis tes sorties Garmin' : 'Estimé selon ton profil actuel'}</p>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -862,6 +873,22 @@ function ChatContent() {
   const [launchStatus, setLaunchStatus] = useState('');
   const [racePriority, setRacePriority] = useState<'main' | 'secondary' | null>(null);
   const [goalAssessment, setGoalAssessment] = useState<GoalAssessment | null>(null);
+  const [garminSummary, setGarminSummary] = useState<GarminActivitySummary | null>(null);
+
+  const fetchGarminSummary = async (): Promise<GarminActivitySummary | undefined> => {
+    const tokens = loadGarminTokens();
+    if (!tokens) return undefined;
+    try {
+      const r = await fetch('/api/garmin/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ garminTokens: tokens }),
+      });
+      const d = await r.json() as { summary?: GarminActivitySummary };
+      if (d.summary) { setGarminSummary(d.summary); return d.summary; }
+    } catch { /* non-fatal */ }
+    return undefined;
+  };
 
   const fetchGeminiPlan = async (profile: UserProfile, garmin?: GarminActivitySummary, userGoalTimeMin?: number): Promise<TrainingPlan> => {
     setLaunchStatus('Gemini construit tes séances…');
@@ -893,20 +920,11 @@ function ChatContent() {
   const handleStep7Launch = async () => {
     setLaunching(true);
     try {
-      // 1. Fetch Garmin activities if tokens available
-      let garmin: GarminActivitySummary | undefined;
-      const tokens = loadGarminTokens();
-      if (tokens) {
+      // 1. Use pre-fetched Garmin data; re-fetch only if not already loaded
+      let garmin: GarminActivitySummary | undefined = garminSummary ?? undefined;
+      if (!garmin) {
         setLaunchStatus('Récupération de tes courses Garmin…');
-        try {
-          const r = await fetch('/api/garmin/activities', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ garminTokens: tokens }),
-          });
-          const d = await r.json() as { summary?: GarminActivitySummary };
-          garmin = d.summary ?? undefined;
-        } catch { /* non-fatal */ }
+        garmin = await fetchGarminSummary();
       }
 
       // 2. Build profile from form data (no extra LLM call needed)
@@ -1139,7 +1157,12 @@ function ChatContent() {
 
   if (phase === 'step6') return (
     <Step6TrainingEnv
-      onSelect={(e) => { setTrainingEnv(e); setPhase('step7'); }}
+      onSelect={(e) => {
+        setTrainingEnv(e);
+        setPhase('step7');
+        // Pre-fetch Garmin data in background so Step7 estimate is accurate
+        if (!garminSummary) fetchGarminSummary().catch(() => {});
+      }}
       onBack={() => setPhase('step5')}
     />
   );
@@ -1151,6 +1174,7 @@ function ChatContent() {
       raceElevationGain={raceElevationGain} raceDate={raceDate}
       fitnessState={fitnessState ?? 'active'}
       weeklySessions={weeklySessions ?? 3}
+      garminPaceSec={garminSummary?.recentAvgPaceSecKm}
       image={blobImages[goalType === 'trail' ? 1 : 0] ?? blobImages[0]}
       onLaunch={handleStep7Launch}
       launching={launching}
