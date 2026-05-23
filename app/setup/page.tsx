@@ -17,7 +17,7 @@ import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 type Phase =
   | 'garmin' | 'loading'
   | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7'
-  | 'chat' | 'preview';
+  | 'reflect' | 'chat' | 'preview';
 
 type GoalType = 'road' | 'trail' | 'beginner' | 'injury' | 'test';
 type FitnessState = 'active' | 'break2w' | 'break3w' | 'break1m';
@@ -933,6 +933,43 @@ function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: Traini
   );
 }
 
+// ── Reflect screen (debug) ────────────────────────────────────────────────────
+
+function ReflectScreen({ step, loading, text, onNext }: {
+  step: number;
+  loading: boolean;
+  text: string;
+  onNext: () => void;
+}) {
+  return (
+    <div className="min-h-screen bg-[#0F0F10] flex flex-col items-center justify-center px-5">
+      <div className="max-w-md w-full space-y-6">
+        <div className="flex items-center gap-2">
+          <span className="px-2.5 py-1 rounded-full bg-[#C8E635]/20 text-[#C8E635] text-[10px] font-black uppercase tracking-widest">Debug</span>
+          <p className="text-white/40 text-[12px]">Réflexion Gemini · Étape {step}/6</p>
+        </div>
+        <div className="rounded-[24px] bg-white/5 border border-white/10 p-6 min-h-[160px] flex items-start">
+          {loading ? (
+            <div className="flex items-center gap-3">
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin flex-shrink-0" />
+              <p className="text-white/40 text-[14px]">Gemini réfléchit…</p>
+            </div>
+          ) : (
+            <p className="text-white/80 text-[14px] leading-relaxed">{text}</p>
+          )}
+        </div>
+        <button
+          onClick={onNext}
+          disabled={loading}
+          className="w-full py-4 rounded-[20px] bg-white text-[#0F0F10] text-[15px] font-black disabled:opacity-30 transition-all active:scale-[0.98]"
+        >
+          Suivant →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 function ChatContent() {
@@ -964,6 +1001,12 @@ function ChatContent() {
   const [goalAssessment, setGoalAssessment] = useState<GoalAssessment | null>(null);
   const [garminSummary, setGarminSummary] = useState<GarminActivitySummary | null>(null);
 
+  // Debug reflect screen
+  const [reflectText, setReflectText] = useState('');
+  const [reflectLoading, setReflectLoading] = useState(false);
+  const [reflectNextPhase, setReflectNextPhase] = useState<Phase>('step2');
+  const [reflectStep, setReflectStep] = useState(1);
+
   const fetchGarminSummary = async (): Promise<GarminActivitySummary | undefined> => {
     const tokens = loadGarminTokens();
     if (!tokens) return undefined;
@@ -977,6 +1020,23 @@ function ChatContent() {
       if (d.summary) { setGarminSummary(d.summary); return d.summary; }
     } catch { /* non-fatal */ }
     return undefined;
+  };
+
+  const triggerReflect = (nextPhase: Phase, step: number, onboarding: Partial<OnboardingData>) => {
+    setReflectNextPhase(nextPhase);
+    setReflectStep(step);
+    setReflectText('');
+    setReflectLoading(true);
+    setPhase('reflect');
+    fetch('/api/reflect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ onboarding, step }),
+    })
+      .then(r => r.json())
+      .then((d: { reflection?: string }) => setReflectText(d.reflection ?? ''))
+      .catch(() => setReflectText('Erreur lors de la réflexion Gemini.'))
+      .finally(() => setReflectLoading(false));
   };
 
   const fetchGeminiPlan = async (onboarding: OnboardingData, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
@@ -1182,7 +1242,15 @@ function ChatContent() {
             garmin = gd.summary ?? undefined;
           } catch { /* non-fatal */ }
         }
-        const plan = await fetchGeminiPlan(data.profile, garmin);
+        const chatOnboarding: OnboardingData = {
+          goalType: data.profile.terrain === 'trail' ? 'trail' : 'road',
+          fitnessState: 'active',
+          weeklySessions: (data.profile.availableDays?.length as 3 | 4 | 5 | 6) ?? 4,
+          trainingEnv: data.profile.terrain === 'trail' ? 'mountain' : data.profile.terrain === 'hilly' ? 'hill' : 'flat',
+          raceDate: data.profile.goalDate,
+          raceGoalTime: data.profile.goalTimeMin ? String(data.profile.goalTimeMin) : undefined,
+        };
+        const plan = await fetchGeminiPlan(chatOnboarding, garmin);
         setLaunching(false);
         setLaunchStatus('');
         setGeneratedPlan(plan);
@@ -1207,6 +1275,15 @@ function ChatContent() {
 
   // ── Phase renders ──────────────────────────────────────────────────────────
 
+  if (phase === 'reflect') return (
+    <ReflectScreen
+      step={reflectStep}
+      loading={reflectLoading}
+      text={reflectText}
+      onNext={() => setPhase(reflectNextPhase)}
+    />
+  );
+
   if (phase === 'garmin') return <GarminConnectStep onConnected={handleGarminConnected} onSkip={() => { setPhase('step1'); setInitialized(true); }} />;
 
   if (phase === 'loading' || !initialized) return (
@@ -1217,12 +1294,18 @@ function ChatContent() {
   );
 
   if (phase === 'step1') return (
-    <Step1GoalType images={blobImages} onSelect={(t) => { setGoalType(t); setPhase('step2'); }} />
+    <Step1GoalType images={blobImages} onSelect={(t) => {
+      setGoalType(t);
+      triggerReflect('step2', 1, { goalType: t });
+    }} />
   );
 
   if (phase === 'step2') return (
     <Step2Priority
-      onSelect={(p) => { setRacePriority(p); setPhase('step3'); }}
+      onSelect={(p) => {
+        setRacePriority(p);
+        triggerReflect('step3', 2, { goalType: goalType ?? undefined, racePriority: p });
+      }}
       onBack={() => setPhase('step1')}
     />
   );
@@ -1240,21 +1323,43 @@ function ChatContent() {
         else if (field === 'raceElevationGain') setRaceElevationGain(val);
         else if (field === 'raceGoalTime') setRaceGoalTime(val);
       }}
-      onConfirm={() => setPhase('step4')}
+      onConfirm={() => triggerReflect('step4', 3, {
+        goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
+        raceName: raceName || undefined, raceDate: raceDate || undefined,
+        raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
+        raceGoalTime: raceGoalTime || undefined,
+      })}
       onBack={() => setPhase('step2')}
     />
   );
 
   if (phase === 'step4') return (
     <Step4FitnessState
-      onSelect={(s) => { setFitnessState(s); setPhase('step5'); }}
+      onSelect={(s) => {
+        setFitnessState(s);
+        triggerReflect('step5', 4, {
+          goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
+          raceName: raceName || undefined, raceDate: raceDate || undefined,
+          raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
+          raceGoalTime: raceGoalTime || undefined, fitnessState: s,
+        });
+      }}
       onBack={() => setPhase('step3')}
     />
   );
 
   if (phase === 'step5') return (
     <Step5WeeklyRhythm
-      onSelect={(s) => { setWeeklySessions(s); setPhase('step6'); }}
+      onSelect={(s) => {
+        setWeeklySessions(s);
+        triggerReflect('step6', 5, {
+          goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
+          raceName: raceName || undefined, raceDate: raceDate || undefined,
+          raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
+          raceGoalTime: raceGoalTime || undefined, fitnessState: fitnessState ?? undefined,
+          weeklySessions: s,
+        });
+      }}
       onBack={() => setPhase('step4')}
     />
   );
@@ -1263,9 +1368,15 @@ function ChatContent() {
     <Step6TrainingEnv
       onSelect={(e) => {
         setTrainingEnv(e);
-        setPhase('step7');
         // Pre-fetch Garmin data in background so Step7 estimate is accurate
         if (!garminSummary) fetchGarminSummary().catch(() => {});
+        triggerReflect('step7', 6, {
+          goalType: goalType ?? undefined, racePriority: racePriority ?? undefined,
+          raceName: raceName || undefined, raceDate: raceDate || undefined,
+          raceDistanceKm: raceDistanceKm || undefined, raceElevationGain: raceElevationGain || undefined,
+          raceGoalTime: raceGoalTime || undefined, fitnessState: fitnessState ?? undefined,
+          weeklySessions: weeklySessions ?? undefined, trainingEnv: e,
+        });
       }}
       onBack={() => setPhase('step5')}
     />

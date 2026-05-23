@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
     let lactateThresholdSpeedMps: number | undefined;
     let lactateThresholdHR: number | undefined;
     try {
-      const settings = await client.getUserSettings() as { userData?: Record<string, unknown> };
+      const settings = await client.getUserSettings() as unknown as { userData?: Record<string, unknown> };
       const ud = settings?.userData;
       if (ud) {
         if (typeof ud.vo2MaxRunning === 'number' && ud.vo2MaxRunning > 0) vo2Max = ud.vo2MaxRunning;
