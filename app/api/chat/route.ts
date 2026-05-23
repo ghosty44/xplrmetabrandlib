@@ -52,6 +52,11 @@ Le texte visible lors de la génération du profil : UNE phrase d'accroche court
 
 Ta première réponse doit poser directement la question 1 du protocole (sans te présenter — le message de bienvenue l'a déjà fait).`;
 
+function buildSystemPrompt(): string {
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return `${SYSTEM_PROMPT}\n\nDate du jour : ${today}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: buildSystemPrompt(),
     });
 
     // Gemini requires history to start with a 'user' turn — drop leading model messages (welcome msg)
