@@ -178,7 +178,7 @@ function buildAthleteContext(onboarding: OnboardingData, garmin?: GarminActivity
 
 // ── Prompt template — pure generation instructions, no athlete data ────────────
 
-function buildPlanPrompt(athleteContext: string, weeksCount: number, sessionsPerWeek: number, isTrail: boolean, weeklyVolumes: number[]): string {
+function buildPlanPrompt(athleteContext: string, weeksCount: number, sessionsPerWeek: number, strengthPerWeek: number, isTrail: boolean, weeklyVolumes: number[]): string {
   const volumeTable = weeklyVolumes
     .map((km, i) => `| Semaine ${i + 1} | ${km} km |`)
     .join('\n');
@@ -241,7 +241,8 @@ Distribue les séances de chaque semaine pour atteindre PRÉCISÉMENT son volume
 ## 6. Règles du plan d'entraînement (array "sessions") — NON NÉGOCIABLES
 
 - Intensités : "easy" (Z2), "moderate" (Z3), "hard" (Z4–Z5), "long" (Z2, durée +25%), "recovery" (Z1), "hill"${isTrail ? ' (OBLIGATOIRE dès sem. 3)' : ''}, "strength".
-- Répartition : EXACTEMENT ${sessionsPerWeek} séances par semaine, placées uniquement sur les "availableDays".
+- Séances de course : EXACTEMENT ${sessionsPerWeek} par semaine (easy/moderate/hard/long/recovery/hill), placées sur les "availableDays".
+- Séances de renforcement ("strength") : ${strengthPerWeek} par semaine, planifiées sur des jours DISTINCTS des séances de course. Elles sont ADDITIONNELLES au quota de ${sessionsPerWeek} séances de course — ne les compte pas dedans.
 - Règle 80/20 : ≥ 80% en easy/long/recovery ; ≤ 20% en moderate/hard/hill.
 - Volume hebdo : conforme au tableau imposé ci-dessus (section 5). C'est la seule contrainte de volume.
 - Échauffement : avant toute séance "hard" ou "moderate", prévoir 20–25 min d'échauffement progressif (inclus dans totalMin et km de la séance).
@@ -334,7 +335,7 @@ function buildPrompt(onboarding: OnboardingData, weeksCount: number, garmin?: Ga
   const startKm = estimateStartKm(onboarding, garmin);
   const weeklyVolumes = computeWeeklyVolumes(startKm, weeksCount);
   return {
-    prompt: buildPlanPrompt(athleteContext, weeksCount, onboarding.weeklySessions, isTrail, weeklyVolumes),
+    prompt: buildPlanPrompt(athleteContext, weeksCount, onboarding.weeklySessions, onboarding.strengthPerWeek, isTrail, weeklyVolumes),
     imposedGoalMin,
     imposedThresholdSec,
   };
@@ -377,7 +378,7 @@ export async function POST(req: NextRequest) {
       return text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
     }
 
-    function processRaw(raw: string, sessionsPerWeek: number, imposedGoalMin: number | null, imposedThresholdSec: number | null) {
+    function processRaw(raw: string, sessionsPerWeek: number, strengthPerWeek: number, imposedGoalMin: number | null, imposedThresholdSec: number | null) {
       const jsonStr = stripMarkdown(raw);
       const parsedJson = JSON.parse(jsonStr) as unknown;
       let sessions: GeminiSession[];
@@ -398,10 +399,11 @@ export async function POST(req: NextRequest) {
              typeof s.name === 'string' && typeof s.totalMin === 'number'
       );
       if (!sessions.length) throw new Error('Aucune séance valide');
-      const maxPerWeek = Math.max(3, Math.min(6, Math.round(Number(sessionsPerWeek)))) || 3;
-      const days = (geminiProfile?.availableDays?.length === maxPerWeek)
+      const maxRunPerWeek = Math.max(3, Math.min(6, Math.round(Number(sessionsPerWeek)))) || 3;
+      const maxStrengthPerWeek = Math.max(0, Math.min(2, Math.round(Number(strengthPerWeek))));
+      const days = (geminiProfile?.availableDays?.length === maxRunPerWeek)
         ? geminiProfile.availableDays
-        : buildDefaultDays(maxPerWeek);
+        : buildDefaultDays(maxRunPerWeek);
       const byWeek = new Map<number, GeminiSession[]>();
       for (const s of sessions) {
         if (!byWeek.has(s.week)) byWeek.set(s.week, []);
@@ -409,15 +411,16 @@ export async function POST(req: NextRequest) {
       }
       sessions = [];
       for (const [, ws] of byWeek) {
-        const limited = ws.slice(0, maxPerWeek);
-        limited.forEach((s, i) => { s.day = days[i % days.length]; });
-        sessions.push(...limited);
+        const runSessions = ws.filter(s => s.intensity !== 'strength').slice(0, maxRunPerWeek);
+        const strengthSessions = ws.filter(s => s.intensity === 'strength').slice(0, maxStrengthPerWeek);
+        runSessions.forEach((s, i) => { s.day = days[i % days.length]; });
+        sessions.push(...runSessions, ...strengthSessions);
       }
       if (geminiProfile) geminiProfile.availableDays = days;
       // Override whatever Gemini computed — backend values are authoritative
       if (geminiProfile && imposedGoalMin !== null) geminiProfile.goalTimeMin = imposedGoalMin;
       if (geminiProfile && imposedThresholdSec !== null) geminiProfile.thresholdPaceSec = imposedThresholdSec;
-      console.log(`[generate-plan] enforced ${maxPerWeek} sessions/week, total: ${sessions.length}, goalTimeMin: ${geminiProfile?.goalTimeMin}`);
+      console.log(`[generate-plan] enforced ${maxRunPerWeek} run + ${maxStrengthPerWeek} strength/week, total: ${sessions.length}, goalTimeMin: ${geminiProfile?.goalTimeMin}`);
       return { sessions, goalAssessment, profile: geminiProfile };
     }
 
@@ -435,7 +438,7 @@ export async function POST(req: NextRequest) {
               controller.enqueue(sse({ text }));
             }
             try {
-              const processed = processRaw(fullText, onboarding.weeklySessions, imposedGoalMin, imposedThresholdSec);
+              const processed = processRaw(fullText, onboarding.weeklySessions, onboarding.strengthPerWeek, imposedGoalMin, imposedThresholdSec);
               controller.enqueue(sse({ done: true, ...processed }));
             } catch {
               controller.enqueue(sse({ error: 'JSON mal formé — utilisation du plan de secours' }));
@@ -474,7 +477,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ sessions: null, error: `Gemini: ${msg}` });
       }
       try {
-        ({ sessions, goalAssessment, profile: geminiProfile } = processRaw(raw, onboarding.weeklySessions, imposedGoalMin, imposedThresholdSec));
+        ({ sessions, goalAssessment, profile: geminiProfile } = processRaw(raw, onboarding.weeklySessions, onboarding.strengthPerWeek, imposedGoalMin, imposedThresholdSec));
         parsed = true;
         if (attempt > 1) console.log(`[generate-plan] JSON parsed on attempt ${attempt}`);
         break;
