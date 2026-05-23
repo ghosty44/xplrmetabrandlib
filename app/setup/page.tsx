@@ -823,7 +823,22 @@ function Step7Result({
 
 // ── Plan preview ──────────────────────────────────────────────────────────────
 
-function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: TrainingPlan; goalAssessment?: GoalAssessment | null; onConfirm: () => void; onBack: () => void }) {
+type PlanChatMessage = { role: 'user' | 'model'; content: string; planUpdated?: boolean };
+
+function PlanPreview({
+  plan, goalAssessment, onConfirm, onBack, onPlanUpdate,
+}: {
+  plan: TrainingPlan;
+  goalAssessment?: GoalAssessment | null;
+  onConfirm: () => void;
+  onBack: () => void;
+  onPlanUpdate: (plan: TrainingPlan) => void;
+}) {
+  const [chatMessages, setChatMessages] = useState<PlanChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
   const p = plan.profile;
   const RACE_LABELS: Record<string, string> = { marathon: 'Marathon', halfMarathon: 'Semi-Marathon', '10k': '10 km', '5k': '5 km' };
   const totalWeeks = Math.max(0, ...plan.sessions.map(s => s.week));
@@ -842,15 +857,76 @@ function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: Traini
     réaliste: '#34C759', ambitieux: '#FF9500', 'sous-estimé': '#007AFF', excellent: '#C8E635',
   };
 
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, chatLoading]);
+
+  const sendChat = async (content: string) => {
+    if (!content.trim() || chatLoading) return;
+    const userMsg: PlanChatMessage = { role: 'user', content };
+    const next = [...chatMessages, userMsg];
+    setChatMessages(next);
+    setChatInput('');
+    setChatLoading(true);
+    try {
+      const res = await fetch('/api/plan-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: next.map(m => ({ role: m.role, content: m.content })),
+          plan,
+        }),
+      });
+      const data = await res.json() as {
+        message: string;
+        updatedSessions?: GeminiSession[];
+        updatedProfile?: UserProfile;
+      };
+
+      if (data.updatedSessions?.length) {
+        const KM_PER_MIN: Record<string, number> = { easy: 0.165, moderate: 0.2, hard: 0.185, long: 0.165, recovery: 0.13, strength: 0, hill: 0.13 };
+        const newProfile = data.updatedProfile ?? plan.profile;
+        const newSessions: Session[] = data.updatedSessions.map((gs, i) => ({
+          id: `chat_${gs.week}_${gs.day}_${i}`,
+          name: gs.name,
+          week: gs.week,
+          day: gs.day,
+          type: gs.intensity === 'strength' ? 'strength' : 'running',
+          description: gs.description,
+          totalMin: gs.totalMin,
+          totalKm: gs.km ?? Math.round((KM_PER_MIN[gs.intensity] ?? 0.165) * gs.totalMin * 10) / 10,
+          completed: false,
+          garminSynced: false,
+          steps: [],
+        }));
+        const updatedPlan: TrainingPlan = {
+          ...plan,
+          profile: newProfile,
+          sessions: newSessions,
+        };
+        onPlanUpdate(updatedPlan);
+        setChatMessages([...next, { role: 'model', content: data.message, planUpdated: true }]);
+      } else {
+        setChatMessages([...next, { role: 'model', content: data.message }]);
+      }
+    } catch {
+      setChatMessages([...next, { role: 'model', content: 'Erreur de connexion. Réessaie.' }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F2F2F7]">
-      <div className="max-w-md mx-auto px-4 pt-14 pb-32 space-y-3">
+      <div className="max-w-md mx-auto px-4 pt-14 pb-8 space-y-3">
         <button onClick={onBack} className="flex items-center gap-2 text-[13px] font-semibold text-[#8E8E93] mb-2">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           Modifier
         </button>
+
+        {/* Plan header */}
         <div className="rounded-[28px] bg-[#0F0F10] p-6">
           <p className="text-[10px] font-semibold text-white/50 uppercase tracking-[0.15em] mb-1">Ton plan RunAI</p>
           <p className="text-[28px] font-black text-white leading-tight mb-1">
@@ -874,6 +950,7 @@ function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: Traini
           </div>
         </div>
 
+        {/* Goal assessment */}
         {goalAssessment && (
           <div className="rounded-[24px] bg-white border border-black/5 p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -899,6 +976,7 @@ function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: Traini
           </div>
         )}
 
+        {/* Plan preview */}
         <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
           <div className="px-5 py-4 border-b border-[#F2F2F7]">
             <p className="text-[13px] font-semibold text-[#0F0F10]">Aperçu du plan</p>
@@ -925,7 +1003,95 @@ function PlanPreview({ plan, goalAssessment, onConfirm, onBack }: { plan: Traini
             </div>
           )}
         </div>
-        <button onClick={onConfirm} className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black transition-all active:scale-[0.98]">
+
+        {/* Chat with coach */}
+        <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#F2F2F7] flex items-center gap-3">
+            <div className="w-7 h-7 rounded-[9px] bg-[#0F0F10] flex items-center justify-center flex-shrink-0">
+              <span className="text-[#C8E635] font-black text-[11px]">AI</span>
+            </div>
+            <div>
+              <p className="text-[13px] font-semibold text-[#0F0F10]">Discute avec ton coach</p>
+              <p className="text-[11px] text-[#8E8E93]">Pose des questions ou demande des modifications</p>
+            </div>
+          </div>
+
+          {/* Suggestion chips */}
+          {chatMessages.length === 0 && (
+            <div className="px-5 py-3 flex gap-2 overflow-x-auto scrollbar-none">
+              {[
+                'Pourquoi autant de sorties easy ?',
+                'Réduis le volume sem. 1',
+                'Explique la progression',
+                'Décale les séances au week-end',
+              ].map((chip) => (
+                <button key={chip} onClick={() => sendChat(chip)}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-full bg-[#F2F2F7] text-[11px] font-semibold text-[#0F0F10] whitespace-nowrap transition-all active:scale-[0.96]">
+                  {chip}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Messages */}
+          {chatMessages.length > 0 && (
+            <div className="px-4 py-3 space-y-2.5 max-h-72 overflow-y-auto">
+              {chatMessages.map((msg, i) => (
+                <div key={i}>
+                  {msg.planUpdated && (
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <div className="h-px flex-1 bg-[#C8E635]/40" />
+                      <span className="text-[10px] font-semibold text-[#5A6A00] uppercase tracking-wide">Plan mis à jour</span>
+                      <div className="h-px flex-1 bg-[#C8E635]/40" />
+                    </div>
+                  )}
+                  <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] px-3.5 py-2.5 rounded-[16px] text-[13px] leading-relaxed ${
+                      msg.role === 'user'
+                        ? 'bg-[#0F0F10] text-white rounded-br-[5px]'
+                        : 'bg-[#F2F2F7] text-[#0F0F10] rounded-bl-[5px]'
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-[#F2F2F7] rounded-[16px] rounded-bl-[5px] px-4 py-3 flex gap-1">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#8E8E93] animate-bounce"
+                        style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.8s' }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="px-4 pb-4 pt-2 flex items-center gap-2 border-t border-[#F2F2F7]">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(chatInput); } }}
+              placeholder="Ex : réduis les sorties longues…"
+              className="flex-1 px-4 py-2.5 bg-[#F2F2F7] rounded-[14px] text-[13px] text-[#0F0F10] placeholder:text-[#8E8E93] outline-none"
+            />
+            <button onClick={() => sendChat(chatInput)} disabled={!chatInput.trim() || chatLoading}
+              className="w-9 h-9 rounded-full bg-[#0F0F10] flex items-center justify-center flex-shrink-0 disabled:opacity-30 transition-all active:scale-[0.93]">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Confirm button */}
+        <button onClick={onConfirm}
+          className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black transition-all active:scale-[0.98]">
           Commencer l&apos;entraînement →
         </button>
       </div>
@@ -1450,7 +1616,13 @@ function ChatContent() {
   );
 
   if (phase === 'preview' && generatedPlan) return (
-    <PlanPreview plan={generatedPlan} goalAssessment={goalAssessment} onConfirm={handleConfirmPlan} onBack={() => setPhase('step7')} />
+    <PlanPreview
+      plan={generatedPlan}
+      goalAssessment={goalAssessment}
+      onConfirm={handleConfirmPlan}
+      onBack={() => setPhase('step7')}
+      onPlanUpdate={setGeneratedPlan}
+    />
   );
 
   // ── Resumed chat phase ─────────────────────────────────────────────────────
