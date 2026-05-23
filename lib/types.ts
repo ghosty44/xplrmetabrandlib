@@ -27,6 +27,8 @@ export type Step = {
 
 export type GpxPoint = { lat: number; lng: number };
 
+export type SessionIntensity = 'easy' | 'moderate' | 'hard' | 'long' | 'recovery' | 'strength' | 'hill';
+
 export type Session = {
   id: string;
   name: string;
@@ -42,6 +44,7 @@ export type Session = {
   gpxCoords?: GpxPoint[];
   gpxDistanceKm?: number;
   type?: 'running' | 'strength';
+  intensity?: SessionIntensity;
 };
 
 export type UserProfile = {

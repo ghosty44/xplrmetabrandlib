@@ -201,6 +201,7 @@ function buildPlanFromGeminiSessions(profile: UserProfile, geminiSessions: Gemin
     totalKm: gs.km ?? Math.round((KM_PER_MIN[gs.intensity] ?? 0.165) * gs.totalMin * 10) / 10,
     completed: false,
     garminSynced: false,
+    intensity: gs.intensity,
     steps: [],
   }));
   return {
@@ -1042,6 +1043,131 @@ function PlanPreview({
             <p className="text-[12px] text-[#8E8E93] leading-relaxed">{goalAssessment.message}</p>
           </div>
         )}
+
+        {/* Reasoning card */}
+        {(() => {
+          const RACE_FACTORS: Record<string, number> = { '5k': 0.92, '10k': 0.97, halfMarathon: 1.03, marathon: 1.10 };
+          const RACE_DISTANCES: Record<string, number> = { '5k': 5, '10k': 10, halfMarathon: 21.1, marathon: 42.2 };
+          const RACE_FACTOR_DESC: Record<string, string> = {
+            '5k': '× 0.92 — le 5k se court nettement au-dessus du seuil',
+            '10k': '× 0.97 — le 10k se court légèrement au-dessus du seuil',
+            halfMarathon: '× 1.03 — le semi se court légèrement sous le seuil',
+            marathon: '× 1.10 — le marathon se court bien sous le seuil',
+          };
+
+          const factor = RACE_FACTORS[p.goalRace] ?? 1.0;
+          const dist = RACE_DISTANCES[p.goalRace] ?? 10;
+          const racePaceSec = Math.round(p.thresholdPaceSec * factor);
+          const fmtPace = (sec: number) => `${Math.floor(sec / 60)}'${String(sec % 60).padStart(2, '0')}''`;
+          const computedGoalMin = Math.round(dist * racePaceSec / 60);
+
+          const weeklyStats = (() => {
+            const weeks = Math.max(0, ...plan.sessions.map(s => s.week));
+            return Array.from({ length: weeks }, (_, i) => {
+              const w = i + 1;
+              const ws = plan.sessions.filter(s => s.week === w);
+              const run = ws.filter(s => s.type !== 'strength');
+              const str = ws.filter(s => s.type === 'strength');
+              const km = run.reduce((sum, s) => sum + (s.totalKm ?? 0), 0);
+              const weekType = w >= weeks - 1 ? 'affûtage' : w % 4 === 0 ? 'récup' : 'charge';
+              return { week: w, km: Math.round(km * 10) / 10, runCount: run.length, strCount: str.length, weekType };
+            });
+          })();
+          const maxKm = Math.max(...weeklyStats.map(w => w.km), 1);
+
+          const runSessions = plan.sessions.filter(s => s.type !== 'strength');
+          const easyCount = runSessions.filter(s => ['easy', 'long', 'recovery'].includes(s.intensity ?? '')).length;
+          const hardCount = runSessions.filter(s => ['moderate', 'hard', 'hill'].includes(s.intensity ?? '')).length;
+          const easyPct = runSessions.length > 0 ? Math.round(easyCount / runSessions.length * 100) : 80;
+          const hardPct = 100 - easyPct;
+
+          const WEEK_TYPE_COLOR: Record<string, string> = { charge: '#C8E635', récup: '#007AFF', affûtage: '#FF9500' };
+
+          return (
+            <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#F2F2F7]">
+                <p className="text-[13px] font-bold text-[#0F0F10]">Raisonnement complet</p>
+                <p className="text-[11px] text-[#8E8E93] mt-0.5">Pourquoi ce temps cible, pourquoi ces entraînements</p>
+              </div>
+
+              {/* Time target computation */}
+              <div className="px-5 py-4 border-b border-[#F2F2F7]">
+                <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em] mb-3">Calcul du temps cible</p>
+                <div className="space-y-2">
+                  {[
+                    { label: 'Allure au seuil lactique', value: fmtPace(p.thresholdPaceSec) + ' /km', sub: 'Source : Garmin / estimation' },
+                    { label: `Facteur ${RACE_LABELS[p.goalRace] ?? p.goalRace}`, value: RACE_FACTOR_DESC[p.goalRace] ?? `× ${factor}`, sub: null },
+                    { label: 'Allure course cible', value: fmtPace(racePaceSec) + ' /km', sub: null },
+                    { label: `${RACE_LABELS[p.goalRace] ?? ''} × ${dist} km ÷ 60`, value: fmtMin(computedGoalMin), accent: true, sub: null },
+                  ].map(({ label, value, sub, accent }) => (
+                    <div key={label} className={`flex items-start justify-between gap-3 py-1.5 rounded-[10px] px-2 ${accent ? 'bg-[#0F0F10]' : 'bg-[#F8F8F8]'}`}>
+                      <div>
+                        <p className={`text-[11px] font-semibold ${accent ? 'text-white/70' : 'text-[#8E8E93]'}`}>{label}</p>
+                        {sub && <p className="text-[10px] text-[#C7C7CC] mt-0.5">{sub}</p>}
+                      </div>
+                      <p className={`text-[13px] font-black tabular-nums flex-shrink-0 ${accent ? 'text-[#C8E635]' : 'text-[#0F0F10]'}`}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+                {p.goalTimeMin !== computedGoalMin && (
+                  <p className="text-[10px] text-[#8E8E93] mt-2">
+                    Temps final retenu : <span className="font-bold text-[#0F0F10]">{fmtMin(p.goalTimeMin)}</span>
+                    {goalAssessment?.userMin != null ? ` (ajusté sur ton objectif déclaré de ${fmtMin(goalAssessment.userMin)})` : ''}
+                  </p>
+                )}
+              </div>
+
+              {/* Weekly volume */}
+              <div className="px-5 py-4 border-b border-[#F2F2F7]">
+                <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em] mb-3">Progression du volume hebdomadaire</p>
+                <div className="space-y-1.5">
+                  {weeklyStats.map(({ week, km, runCount, strCount, weekType }) => (
+                    <div key={week} className="flex items-center gap-2">
+                      <p className="text-[10px] text-[#8E8E93] w-12 flex-shrink-0">Sem. {week}</p>
+                      <div className="flex-1 relative h-4 bg-[#F2F2F7] rounded-full overflow-hidden">
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full transition-all"
+                          style={{ width: `${Math.max(4, (km / maxKm) * 100)}%`, backgroundColor: WEEK_TYPE_COLOR[weekType] ?? '#C8E635', opacity: weekType === 'récup' ? 0.5 : weekType === 'affûtage' ? 0.7 : 1 }}
+                        />
+                      </div>
+                      <p className="text-[11px] font-bold text-[#0F0F10] tabular-nums w-14 text-right flex-shrink-0">{km > 0 ? `${km} km` : `${runCount}s`}</p>
+                      <span className="text-[9px] font-bold uppercase tracking-wide flex-shrink-0" style={{ color: WEEK_TYPE_COLOR[weekType] ?? '#C8E635', minWidth: 40, textAlign: 'right' }}>
+                        {weekType}
+                        {strCount > 0 ? ` +${strCount}💪` : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-[#C7C7CC] mt-2">Cycle 3 semaines de charge + 1 semaine de récupération · Affûtage avant la course</p>
+              </div>
+
+              {/* 80/20 distribution */}
+              <div className="px-5 py-4">
+                <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em] mb-3">Répartition des intensités (règle 80/20)</p>
+                <div className="flex h-5 rounded-full overflow-hidden gap-0.5 mb-2">
+                  <div className="rounded-l-full" style={{ width: `${easyPct}%`, backgroundColor: '#C8E635' }} />
+                  <div className="rounded-r-full" style={{ width: `${hardPct}%`, backgroundColor: '#0F0F10' }} />
+                </div>
+                <div className="flex justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#C8E635]" />
+                    <p className="text-[11px] text-[#8E8E93]"><span className="font-bold text-[#0F0F10]">{easyPct}%</span> endurance (EF · long · récup)</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[11px] text-[#8E8E93]"><span className="font-bold text-[#0F0F10]">{hardPct}%</span> intensité</p>
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#0F0F10]" />
+                  </div>
+                </div>
+                {goalAssessment?.message && (
+                  <div className="mt-3 pt-3 border-t border-[#F2F2F7]">
+                    <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em] mb-1.5">Message de ton coach IA</p>
+                    <p className="text-[12px] text-[#0F0F10] leading-relaxed">{goalAssessment.message}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Plan preview */}
         <div className="rounded-[24px] bg-white border border-black/5 overflow-hidden">
