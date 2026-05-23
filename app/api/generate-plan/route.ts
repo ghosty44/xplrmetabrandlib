@@ -178,8 +178,8 @@ Applique silencieusement ces valeurs par défaut si nécessaire :
 ## 3. Calculs physiologiques & Profil (object "profile")
 
 - "goalRace" : "5k" (<8 km), "10k" (8–16 km), "halfMarathon" (17–34 km), "marathon" (≥35 km). Valable aussi pour le trail.
-- "goalTimeMin" : priorité aux données Garmin. Sinon, estimation via l'état de forme. (Entier).
-- "thresholdPaceSec" : allure cible de course × 0.92 (entier en secondes/km).
+- "goalTimeMin" : **PRIORITÉ ABSOLUE au chrono visé déclaré par l'utilisateur** (champ "Chrono visé" du contexte). Si tu veux le valider via Garmin, utilise UNIQUEMENT la **VO2max** ou l'**Allure seuil lactique**. **N'UTILISE JAMAIS l'Allure moyenne récente comme référence de performance** — c'est une moyenne de footings lents (Z2) souvent en dénivelé, PAS une allure de course. La confondre conduit à sous-estimer drastiquement l'athlète. Si aucune donnée Garmin de seuil n'est disponible, fais confiance au chrono visé et estime via l'état de forme.
+- "thresholdPaceSec" : allure cible de course × 0.92 (entier en secondes/km). **Calculée sur l'allure cible de course (déduite du chrono visé), pas sur l'allure moyenne récente.**
 - "availableDays" : EXACTEMENT ${sessionsPerWeek} jours (1=Lun … 7=Dim). Minimum 1 jour de repos entre les séances intenses.
 - "weeklyKm" : cohérent avec l'historique récent. Applique un coefficient de reprise si une pause est détectée.
 - "terrain" : "flat" | "hilly" | "trail"
@@ -222,7 +222,8 @@ Retourne UNIQUEMENT ce JSON (sans backticks markdown) :
     "sessions_per_week_check": "<Vérifie que chaque semaine a exactement ${sessionsPerWeek} séances>",
     "days_used_check": "<Vérifie que seuls les availableDays sont utilisés>",
     "ratio_80_20_check": "<Vérifie le respect du volume d'intensité>",
-    "weekly_volume_check": "<Pour chaque semaine, somme les km des sessions et confirme qu'elle correspond au volume imposé (±5%)>"
+    "weekly_volume_check": "<Pour chaque semaine, somme les km des sessions et confirme qu'elle correspond au volume imposé (±5%)>",
+    "goal_time_source_check": "<Confirme que goalTimeMin est basé sur le chrono visé déclaré ou sur VO2max/seuil lactique — JAMAIS sur l'allure moyenne récente>"
   },
   "profile": {
     "goalRace": "5k" | "10k" | "halfMarathon" | "marathon",
