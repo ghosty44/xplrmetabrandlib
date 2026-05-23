@@ -8,7 +8,8 @@ import {
   getOrCreateUserId, loadUserId, loadPlan, loadGarminUserId,
   saveGarminUserId, saveShoes, GarminTokens,
 } from '@/lib/store';
-import { UserProfile, TrainingPlan, Session, Shoe } from '@/lib/types';
+import { UserProfile, TrainingPlan, Session, Step, Zone, Shoe } from '@/lib/types';
+import { getZonePaceRange } from '@/lib/zones';
 import type { GeminiSession, GoalAssessment, OnboardingData } from '@/app/api/generate-plan/route';
 import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 
@@ -189,6 +190,46 @@ function buildProfile(
 
 const KM_PER_MIN: Record<string, number> = { easy: 0.165, moderate: 0.2, hard: 0.185, long: 0.165, recovery: 0.13, strength: 0, hill: 0.13 };
 
+function makeStep(zone: Zone, durationMin: number, thresholdSec: number, isRecovery = false, reps?: number): Step {
+  return { zone, durationMin, targetPace: getZonePaceRange(zone, thresholdSec), isRecovery, ...(reps !== undefined ? { reps } : {}) };
+}
+
+function buildStepsForGeminiSession(intensity: string, totalMin: number, thresholdSec: number): Step[] {
+  if (intensity === 'easy' || intensity === 'long') {
+    return [makeStep('EF', totalMin, thresholdSec)];
+  }
+  if (intensity === 'recovery') {
+    const core = Math.max(5, totalMin - 10);
+    return [makeStep('Recup', 5, thresholdSec, true), makeStep('EF', core, thresholdSec), makeStep('Recup', 5, thresholdSec, true)];
+  }
+  const warmup = Math.max(10, Math.round(totalMin * 0.28));
+  const cooldown = Math.max(8, Math.round(totalMin * 0.16));
+  const core = Math.max(5, totalMin - warmup - cooldown);
+  if (intensity === 'moderate') {
+    return [makeStep('EF', warmup, thresholdSec), makeStep('Seuil', core, thresholdSec), makeStep('EF', cooldown, thresholdSec)];
+  }
+  if (intensity === 'hard') {
+    const iMin = 2, rMin = 2;
+    const sets = Math.max(3, Math.round(core / (iMin + rMin)));
+    return [
+      makeStep('EF', warmup, thresholdSec),
+      { zone: 'VO2max', durationMin: iMin, targetPace: getZonePaceRange('VO2max', thresholdSec), reps: sets },
+      makeStep('Recup', rMin, thresholdSec, true, sets - 1),
+      makeStep('EF', cooldown, thresholdSec),
+    ];
+  }
+  if (intensity === 'hill') {
+    const reps = Math.max(4, Math.round(core / 3));
+    return [
+      makeStep('EF', warmup, thresholdSec),
+      { zone: 'SSeuilVO2', durationMin: 2, targetPace: getZonePaceRange('SSeuilVO2', thresholdSec), reps, effortMode: 'rpe' as const },
+      makeStep('Recup', 1, thresholdSec, true, reps - 1),
+      makeStep('EF', cooldown, thresholdSec),
+    ];
+  }
+  return [makeStep('EF', totalMin, thresholdSec)];
+}
+
 function buildPlanFromGeminiSessions(profile: UserProfile, geminiSessions: GeminiSession[]): TrainingPlan {
   const sessions: Session[] = geminiSessions.map((gs, i) => ({
     id: `gemini_${gs.week}_${gs.day}_${i}`,
@@ -202,7 +243,7 @@ function buildPlanFromGeminiSessions(profile: UserProfile, geminiSessions: Gemin
     completed: false,
     garminSynced: false,
     intensity: gs.intensity,
-    steps: [],
+    steps: gs.intensity === 'strength' ? [] : buildStepsForGeminiSession(gs.intensity, gs.totalMin, profile.thresholdPaceSec),
   }));
   return {
     id: `gemini_${Date.now()}`,
