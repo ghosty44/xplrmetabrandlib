@@ -1545,6 +1545,8 @@ function ChatContent() {
         const chatOnboarding: OnboardingData = {
           goalType: data.profile.terrain === 'trail' ? 'trail' : 'road',
           fitnessState: 'active',
+          recentInjuries: 'none',
+          strengthPerWeek: 0,
           weeklySessions: (data.profile.availableDays?.length as 3 | 4 | 5 | 6) ?? 3,
           trainingEnv: data.profile.terrain === 'trail' ? 'mountain' : data.profile.terrain === 'hilly' ? 'hill' : 'flat',
           raceDate: data.profile.goalDate,
