@@ -878,12 +878,13 @@ function PlanPreview({
         }),
       });
       const data = await res.json() as {
+        type: 'answer' | 'modification';
         message: string;
         updatedSessions?: GeminiSession[];
         updatedProfile?: UserProfile;
       };
 
-      if (data.updatedSessions?.length) {
+      if (data.type === 'modification' && data.updatedSessions?.length) {
         const KM_PER_MIN: Record<string, number> = { easy: 0.165, moderate: 0.2, hard: 0.185, long: 0.165, recovery: 0.13, strength: 0, hill: 0.13 };
         const newProfile = data.updatedProfile ?? plan.profile;
         const newSessions: Session[] = data.updatedSessions.map((gs, i) => ({
@@ -899,11 +900,7 @@ function PlanPreview({
           garminSynced: false,
           steps: [],
         }));
-        const updatedPlan: TrainingPlan = {
-          ...plan,
-          profile: newProfile,
-          sessions: newSessions,
-        };
+        const updatedPlan: TrainingPlan = { ...plan, profile: newProfile, sessions: newSessions };
         onPlanUpdate(updatedPlan);
         setChatMessages([...next, { role: 'model', content: data.message, planUpdated: true }]);
       } else {
