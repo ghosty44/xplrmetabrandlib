@@ -37,6 +37,9 @@ function getQuickReplies(lastBotMsg: string, allMessages: ChatMessage[]): string
   const is10k = !!chosenRace && (chosenRace.includes('10 km') || chosenRace.includes('10k'));
   const is5k = !!chosenRace && (chosenRace.includes('5 km') || chosenRace.includes('5k'));
 
+  if (m.includes('terrain') || m.includes('trail') || m.includes('route plate') || m.includes('vallonné') || m.includes('montagne') || m.includes('sentier')) {
+    return ['Route (plat)', 'Route (vallonné)', 'Trail / Montagne'];
+  }
   if (m.includes('fc max') || m.includes('fréquence cardiaque maximale') || m.includes('fréquence max') || m.includes('fcmax')) {
     return ['Je ne sais pas', '170 bpm', '180 bpm', '190 bpm'];
   }
