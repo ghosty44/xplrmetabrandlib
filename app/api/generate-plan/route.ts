@@ -43,11 +43,19 @@ function fmtPaceSec(sec: number): string {
 }
 
 function buildGarminSection(summary: GarminActivitySummary): string {
+  const fmtPaceFromMps = (mps: number) => {
+    const sec = Math.round(1000 / mps);
+    return `${Math.floor(sec / 60)}'${String(sec % 60).padStart(2, '0')}''/km`;
+  };
+
   const lines: string[] = [
     '',
     '═══════════════════════════════════════',
     'DONNÉES GARMIN RÉELLES (ne pas ignorer)',
     '═══════════════════════════════════════',
+    ...(summary.vo2Max ? [`VO2max : ${summary.vo2Max} ml/kg/min`] : []),
+    ...(summary.lactateThresholdSpeedMps ? [`Allure seuil lactique : ${fmtPaceFromMps(summary.lactateThresholdSpeedMps)}`] : []),
+    ...(summary.lactateThresholdHR ? [`FC seuil lactique : ${summary.lactateThresholdHR} bpm`] : []),
     `Volume moyen 4 semaines : ${summary.weeklyKm4w} km/semaine`,
     `Volume moyen 8 semaines : ${summary.weeklyKm8w} km/semaine`,
     `Sortie longue max (8 sem) : ${summary.longestRunKm} km`,

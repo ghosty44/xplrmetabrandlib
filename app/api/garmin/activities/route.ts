@@ -12,6 +12,7 @@ interface RawActivity {
   averageHR?: number;
   elevationGain?: number;
   activityType?: { typeKey?: string };
+  vO2MaxValue?: number;    // ml/kg/min, computed by Garmin per activity
 }
 
 export interface RunActivity {
@@ -31,6 +32,9 @@ export interface GarminActivitySummary {
   longestRunKm: number; // longest single run in last 8 weeks
   avgSessionsPerWeek: number;
   recentAvgPaceSecKm: number; // avg pace over last 10 runs
+  vo2Max?: number;                   // ml/kg/min from Garmin user settings or recent activity
+  lactateThresholdSpeedMps?: number; // m/s from Garmin user settings
+  lactateThresholdHR?: number;       // bpm from Garmin user settings
 }
 
 function isoWeek(dateStr: string): string {
@@ -124,6 +128,26 @@ export async function POST(req: NextRequest) {
       ? Math.round(last10.reduce((a, r) => a + r.paceSecKm, 0) / last10.length)
       : 0;
 
+    // Fetch physiological metrics from Garmin user settings
+    let vo2Max: number | undefined;
+    let lactateThresholdSpeedMps: number | undefined;
+    let lactateThresholdHR: number | undefined;
+    try {
+      const settings = await client.getUserSettings() as { userData?: Record<string, unknown> };
+      const ud = settings?.userData;
+      if (ud) {
+        if (typeof ud.vo2MaxRunning === 'number' && ud.vo2MaxRunning > 0) vo2Max = ud.vo2MaxRunning;
+        if (typeof ud.lactateThresholdSpeed === 'number' && ud.lactateThresholdSpeed > 0) lactateThresholdSpeedMps = ud.lactateThresholdSpeed;
+        if (typeof ud.lactateThresholdHeartRate === 'number' && ud.lactateThresholdHeartRate > 0) lactateThresholdHR = ud.lactateThresholdHeartRate;
+      }
+    } catch { /* non-fatal: physiological data is optional */ }
+
+    // Fallback VO2max: most recent non-zero vO2MaxValue from activities
+    if (!vo2Max) {
+      const withVO2 = raw.find(a => typeof a.vO2MaxValue === 'number' && a.vO2MaxValue > 10);
+      if (withVO2?.vO2MaxValue) vo2Max = withVO2.vO2MaxValue;
+    }
+
     const summary: GarminActivitySummary = {
       runs: runs.slice(0, 30),
       weeklyKm4w,
@@ -131,6 +155,9 @@ export async function POST(req: NextRequest) {
       longestRunKm,
       avgSessionsPerWeek,
       recentAvgPaceSecKm,
+      ...(vo2Max ? { vo2Max } : {}),
+      ...(lactateThresholdSpeedMps ? { lactateThresholdSpeedMps } : {}),
+      ...(lactateThresholdHR ? { lactateThresholdHR } : {}),
     };
 
     return NextResponse.json({ summary });

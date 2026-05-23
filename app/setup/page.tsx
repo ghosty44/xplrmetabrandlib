@@ -75,17 +75,38 @@ function estimateFinishMin(
   dist: number, elev: number, isTrail: boolean,
   sessions: number, fitness: FitnessState,
   garminPaceSec?: number,
+  vo2Max?: number,
+  lactateThresholdSpeedMps?: number,
 ): number {
   const fitMult: Record<FitnessState, number> = { active: 1.0, break2w: 1.12, break3w: 1.20, break1m: 1.30 };
+  const effectiveKm = isTrail ? dist + elev / 100 : dist;
 
-  if (garminPaceSec && garminPaceSec > 0) {
-    // Race effort ≈ 93% of training pace; for trail add Naismith (+1km per 100m D+)
-    const racePaceSec = garminPaceSec * fitMult[fitness] * 0.93;
-    const effectiveKm = isTrail ? dist + elev / 100 : dist;
+  // P1 — Lactate threshold speed (most accurate: direct physiological measurement)
+  if (lactateThresholdSpeedMps && lactateThresholdSpeedMps > 0) {
+    const ltPaceSecKm = 1000 / lactateThresholdSpeedMps;
+    const ltFactor = isTrail ? 1.12 : dist >= 25 ? 1.10 : dist >= 17 ? 1.03 : dist >= 8 ? 0.97 : 0.94;
+    const racePaceSec = ltPaceSecKm * ltFactor * fitMult[fitness];
     return Math.round(effectiveKm * racePaceSec / 60);
   }
 
-  // Fallback generic formula
+  // P2 — VO2max via Jack Daniels VDOT formula
+  if (vo2Max && vo2Max > 10) {
+    const intensity = isTrail ? 0.82 : dist >= 25 ? 0.84 : dist >= 17 ? 0.89 : dist >= 8 ? 0.93 : 0.95;
+    const targetVO2 = vo2Max * intensity;
+    // Solve: targetVO2 = -4.60 + 0.182258v + 0.000104v² (v in m/min)
+    const v = (-0.182258 + Math.sqrt(0.182258 ** 2 + 4 * 0.000104 * (targetVO2 + 4.60))) / (2 * 0.000104);
+    const roadPaceSec = (60000 / v) * fitMult[fitness];
+    const trailPaceSec = roadPaceSec * 1.10;
+    return Math.round(effectiveKm * (isTrail ? trailPaceSec : roadPaceSec) / 60);
+  }
+
+  // P3 — Avg training pace (noisy but available)
+  if (garminPaceSec && garminPaceSec > 0) {
+    const racePaceSec = garminPaceSec * fitMult[fitness] * 0.93;
+    return Math.round(effectiveKm * racePaceSec / 60);
+  }
+
+  // P4 — Generic formula (no Garmin data)
   const km = ([0, 0, 0, 25, 35, 45, 55] as number[])[sessions] ?? 25;
   let pace = km >= 50 ? 5.5 : km >= 35 ? 6.2 : km >= 25 ? 7.0 : 8.0;
   pace *= fitMult[fitness];
@@ -640,13 +661,15 @@ function Step6TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => 
 
 function Step7Result({
   goalType, raceName, raceDistanceKm, raceElevationGain, raceDate,
-  fitnessState, weeklySessions, garminPaceSec, image,
+  fitnessState, weeklySessions, garminPaceSec, garminVO2Max, garminLTSpeedMps, image,
   onLaunch, launching, launchStatus, onBack,
 }: {
   goalType: GoalType;
   raceName: string; raceDistanceKm: string; raceElevationGain: string; raceDate: string;
   fitnessState: FitnessState; weeklySessions: 3 | 4 | 5 | 6;
   garminPaceSec?: number;
+  garminVO2Max?: number;
+  garminLTSpeedMps?: number;
   image?: string;
   onLaunch: () => void;
   launching: boolean;
@@ -656,30 +679,61 @@ function Step7Result({
   const dist = parseFloat(raceDistanceKm) || 10;
   const elev = parseFloat(raceElevationGain) || 0;
   const isTrail = goalType === 'trail';
-  const estimatedMin = estimateFinishMin(dist, elev, isTrail, weeklySessions, fitnessState, garminPaceSec);
+  const estimatedMin = estimateFinishMin(dist, elev, isTrail, weeklySessions, fitnessState, garminPaceSec, garminVO2Max, garminLTSpeedMps);
 
   const fmtPaceSec = (sec: number) => `${Math.floor(sec / 60)}'${String(Math.round(sec % 60)).padStart(2, '0')}''`;
   const fitMult: Record<FitnessState, number> = { active: 1.0, break2w: 1.12, break3w: 1.20, break1m: 1.30 };
   const fitLabel: Record<FitnessState, string> = { active: '', break2w: ' × 1.12 (reprise légère)', break3w: ' × 1.20 (reprise modérée)', break1m: ' × 1.30 (reprise longue)' };
+  const effectiveKm = isTrail ? dist + elev / 100 : dist;
 
   const calcSteps: string[] = (() => {
+    // P1 — Lactate threshold
+    if (garminLTSpeedMps && garminLTSpeedMps > 0) {
+      const ltPaceSecKm = 1000 / garminLTSpeedMps;
+      const ltFactor = isTrail ? 1.12 : dist >= 25 ? 1.10 : dist >= 17 ? 1.03 : dist >= 8 ? 0.97 : 0.94;
+      const adjustedLTPace = ltPaceSecKm * fitMult[fitnessState];
+      const racePaceSec = adjustedLTPace * ltFactor;
+      return [
+        `Seuil lactique Garmin : ${fmtPaceSec(ltPaceSecKm)}/km`,
+        ...(fitnessState !== 'active' ? [`Ajustement forme${fitLabel[fitnessState]} → ${fmtPaceSec(adjustedLTPace)}/km`] : []),
+        `Facteur course ×${ltFactor} → allure cible : ${fmtPaceSec(racePaceSec)}/km`,
+        ...(isTrail && elev > 0 ? [`Naismith : ${dist}km + ${elev}m D+ ÷ 100 = ${effectiveKm.toFixed(1)} km effectifs`] : []),
+        `${effectiveKm.toFixed(1)} km × ${fmtPaceSec(racePaceSec)} = ${formatTime(estimatedMin)}`,
+      ];
+    }
+    // P2 — VO2max
+    if (garminVO2Max && garminVO2Max > 10) {
+      const intensity = isTrail ? 0.82 : dist >= 25 ? 0.84 : dist >= 17 ? 0.89 : dist >= 8 ? 0.93 : 0.95;
+      const targetVO2 = garminVO2Max * intensity;
+      const v = (-0.182258 + Math.sqrt(0.182258 ** 2 + 4 * 0.000104 * (targetVO2 + 4.60))) / (2 * 0.000104);
+      const roadPaceSec = (60000 / v) * fitMult[fitnessState];
+      const racePaceSec = isTrail ? roadPaceSec * 1.10 : roadPaceSec;
+      return [
+        `VO2max Garmin : ${garminVO2Max} ml/kg/min`,
+        `Intensité course : ${Math.round(intensity * 100)}% VO2max → formule VDOT`,
+        ...(fitnessState !== 'active' ? [`Ajustement forme${fitLabel[fitnessState]}`] : []),
+        ...(isTrail ? [`Trail ×1.10 + Naismith (${effectiveKm.toFixed(1)} km effectifs)`] : []),
+        `Allure calculée : ${fmtPaceSec(racePaceSec)}/km → ${formatTime(estimatedMin)}`,
+      ];
+    }
+    // P3 — Avg training pace
     if (garminPaceSec && garminPaceSec > 0) {
       const adjustedPaceSec = garminPaceSec * fitMult[fitnessState];
       const racePaceSec = adjustedPaceSec * 0.93;
-      const effectiveKm = isTrail ? dist + elev / 100 : dist;
-      const steps = [
+      return [
         `Allure entraînement : ${fmtPaceSec(garminPaceSec)}/km (moy. 10 dernières sorties)`,
         ...(fitnessState !== 'active' ? [`Ajustement forme${fitLabel[fitnessState]} → ${fmtPaceSec(adjustedPaceSec)}/km`] : []),
         `Effort course ×0.93 → ${fmtPaceSec(racePaceSec)}/km`,
         ...(isTrail && elev > 0 ? [`Naismith : ${dist}km + ${elev}m D+ ÷ 100 = ${effectiveKm.toFixed(1)} km effectifs`] : []),
         `${effectiveKm.toFixed(1)} km × ${fmtPaceSec(racePaceSec)} = ${formatTime(estimatedMin)}`,
       ];
-      return steps;
     }
+    // P4 — Generic
     const km = ([0, 0, 0, 25, 35, 45, 55] as number[])[weeklySessions] ?? 25;
     const basePace = km >= 50 ? 5.5 : km >= 35 ? 6.2 : km >= 25 ? 7.0 : 8.0;
     const adjPace = basePace * fitMult[fitnessState];
     return [
+      `Estimation par défaut (pas de données Garmin)`,
       `Volume estimé : ${km} km/sem → allure de base : ${fmtPaceSec(adjPace * 60)}/km`,
       ...(isTrail ? [`Trail ×1.5 + ${elev}m D+ ÷ 8 → estimation globale`] : []),
       `${dist} km × ${fmtPaceSec(adjPace * 60)} = ${formatTime(estimatedMin)}`,
@@ -1210,6 +1264,8 @@ function ChatContent() {
       fitnessState={fitnessState ?? 'active'}
       weeklySessions={weeklySessions ?? 3}
       garminPaceSec={garminSummary?.recentAvgPaceSecKm}
+      garminVO2Max={garminSummary?.vo2Max}
+      garminLTSpeedMps={garminSummary?.lactateThresholdSpeedMps}
       image={blobImages[goalType === 'trail' ? 1 : 0] ?? blobImages[0]}
       onLaunch={handleStep7Launch}
       launching={launching}
