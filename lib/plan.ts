@@ -263,7 +263,8 @@ export function generatePlan(profile: UserProfile): TrainingPlan {
   const isHilly = terrain !== 'flat';
   const sessions: Session[] = [];
 
-  const days = profile.availableDays?.length === 4 ? profile.availableDays : [2, 4, 6, 7];
+  const availDays = profile.availableDays;
+  const days = (availDays && availDays.length >= 3) ? availDays.slice(0, 4) : [2, 4, 6, 7];
   const [qualityDay, efDay, longDay, recovDay] = days;
   const strengthPerWeek = profile.strengthPerWeek ?? 0;
 
@@ -387,7 +388,9 @@ export function generatePlan(profile: UserProfile): TrainingPlan {
 
     // ── Recovery ──────────────────────────────────────────────────────────
     const recovMin = Math.max(20, Math.round((isTaper ? 20 : isAssimilation ? 25 : 30) * volFactor));
-    sessions.push(makeRecovery(`w${w}-rec`, w, recovDay, recovMin, thresholdPaceSec));
+    if (recovDay !== undefined) {
+      sessions.push(makeRecovery(`w${w}-rec`, w, recovDay, recovMin, thresholdPaceSec));
+    }
 
     // ── Strength sessions ─────────────────────────────────────────────────
     strengthDays.forEach((sDay, idx) => {
