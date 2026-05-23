@@ -339,11 +339,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Clé API Gemini manquante' });
     }
 
-    let body: { onboarding?: OnboardingData; garmin?: GarminActivitySummary; preview?: boolean };
+    let body: { onboarding?: OnboardingData; garmin?: GarminActivitySummary; preview?: boolean; stream?: boolean };
     try { body = await req.json() as typeof body; }
     catch { return NextResponse.json({ sessions: null, error: 'Corps de requête invalide' }); }
 
-    const { onboarding, garmin, preview } = body;
+    const { onboarding, garmin, preview, stream } = body;
     if (!onboarding) {
       return NextResponse.json({ sessions: null, error: 'Données onboarding manquantes' });
     }
@@ -369,25 +369,82 @@ export async function POST(req: NextRequest) {
       return text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
     }
 
-    function parseGeminiResponse(raw: string): { sessions: GeminiSession[]; goalAssessment: GoalAssessment | null; geminiProfile: UserProfile | null } {
+    function processRaw(raw: string, sessionsPerWeek: number) {
       const jsonStr = stripMarkdown(raw);
-      const parsed = JSON.parse(jsonStr) as unknown;
+      const parsedJson = JSON.parse(jsonStr) as unknown;
       let sessions: GeminiSession[];
       let goalAssessment: GoalAssessment | null = null;
       let geminiProfile: UserProfile | null = null;
-      if (Array.isArray(parsed)) {
-        sessions = parsed as GeminiSession[];
-      } else if (parsed && typeof parsed === 'object' && 'sessions' in parsed) {
-        const obj = parsed as { profile?: UserProfile; goal?: GoalAssessment; sessions: GeminiSession[] };
+      if (Array.isArray(parsedJson)) {
+        sessions = parsedJson as GeminiSession[];
+      } else if (parsedJson && typeof parsedJson === 'object' && 'sessions' in parsedJson) {
+        const obj = parsedJson as { profile?: UserProfile; goal?: GoalAssessment; sessions: GeminiSession[] };
         sessions = obj.sessions ?? [];
         goalAssessment = obj.goal ?? null;
         geminiProfile = obj.profile ?? null;
       } else {
         throw new Error('Format inattendu');
       }
-      return { sessions, goalAssessment, geminiProfile };
+      sessions = sessions.filter(
+        s => typeof s.week === 'number' && typeof s.day === 'number' &&
+             typeof s.name === 'string' && typeof s.totalMin === 'number'
+      );
+      if (!sessions.length) throw new Error('Aucune séance valide');
+      const maxPerWeek = Math.max(3, Math.min(6, Math.round(Number(sessionsPerWeek)))) || 3;
+      const days = (geminiProfile?.availableDays?.length === maxPerWeek)
+        ? geminiProfile.availableDays
+        : buildDefaultDays(maxPerWeek);
+      const byWeek = new Map<number, GeminiSession[]>();
+      for (const s of sessions) {
+        if (!byWeek.has(s.week)) byWeek.set(s.week, []);
+        byWeek.get(s.week)!.push(s);
+      }
+      sessions = [];
+      for (const [, ws] of byWeek) {
+        const limited = ws.slice(0, maxPerWeek);
+        limited.forEach((s, i) => { s.day = days[i % days.length]; });
+        sessions.push(...limited);
+      }
+      if (geminiProfile) geminiProfile.availableDays = days;
+      console.log(`[generate-plan] enforced ${maxPerWeek} sessions/week, total: ${sessions.length}`);
+      return { sessions, goalAssessment, profile: geminiProfile };
     }
 
+    if (stream) {
+      const encoder = new TextEncoder();
+      const sse = (data: unknown) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            const result = await model.generateContentStream(prompt);
+            let fullText = '';
+            for await (const chunk of result.stream) {
+              const text = chunk.text();
+              fullText += text;
+              controller.enqueue(sse({ text }));
+            }
+            try {
+              const processed = processRaw(fullText, onboarding.weeklySessions);
+              controller.enqueue(sse({ done: true, ...processed }));
+            } catch {
+              controller.enqueue(sse({ error: 'JSON mal formé — utilisation du plan de secours' }));
+            }
+          } catch (err) {
+            controller.enqueue(sse({ error: err instanceof Error ? err.message : 'Erreur Gemini' }));
+          }
+          controller.close();
+        },
+      });
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    // Non-streaming path (retry × 3)
     let sessions: GeminiSession[] = [];
     let goalAssessment: GoalAssessment | null = null;
     let geminiProfile: UserProfile | null = null;
@@ -406,7 +463,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ sessions: null, error: `Gemini: ${msg}` });
       }
       try {
-        ({ sessions, goalAssessment, geminiProfile } = parseGeminiResponse(raw));
+        ({ sessions, goalAssessment, profile: geminiProfile } = processRaw(raw, onboarding.weeklySessions));
         parsed = true;
         if (attempt > 1) console.log(`[generate-plan] JSON parsed on attempt ${attempt}`);
         break;
@@ -419,36 +476,6 @@ export async function POST(req: NextRequest) {
       console.error('[generate-plan] All attempts failed. Last raw:', lastRaw.slice(0, 300));
       return NextResponse.json({ sessions: null, error: 'Réponse Gemini invalide (JSON mal formé)' });
     }
-
-    sessions = sessions.filter(
-      s => typeof s.week === 'number' && typeof s.day === 'number' &&
-           typeof s.name === 'string' && typeof s.totalMin === 'number'
-    );
-
-    if (!sessions.length) {
-      return NextResponse.json({ sessions: null, error: 'Aucune séance valide reçue de Gemini' });
-    }
-
-    const maxPerWeek = Math.max(3, Math.min(6, Math.round(Number(onboarding.weeklySessions)))) || 3;
-    const days = (geminiProfile?.availableDays?.length === maxPerWeek)
-      ? geminiProfile.availableDays
-      : buildDefaultDays(maxPerWeek);
-
-    const byWeek = new Map<number, GeminiSession[]>();
-    for (const s of sessions) {
-      if (!byWeek.has(s.week)) byWeek.set(s.week, []);
-      byWeek.get(s.week)!.push(s);
-    }
-    sessions = [];
-    for (const [, ws] of byWeek) {
-      const limited = ws.slice(0, maxPerWeek);
-      limited.forEach((s, i) => { s.day = days[i % days.length]; });
-      sessions.push(...limited);
-    }
-
-    console.log(`[generate-plan] enforced ${maxPerWeek} sessions/week (requested: ${onboarding.weeklySessions}), total: ${sessions.length}`);
-
-    if (geminiProfile) geminiProfile.availableDays = days;
 
     return NextResponse.json({ sessions, goalAssessment, profile: geminiProfile });
   } catch (err) {

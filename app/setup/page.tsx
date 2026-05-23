@@ -726,7 +726,7 @@ function Step7TrainingEnv({ onSelect, onBack }: { onSelect: (e: TrainingEnv) => 
 function Step7Result({
   goalType, raceName, raceDistanceKm, raceElevationGain, raceDate,
   fitnessState, weeklySessions, garminPaceSec, garminVO2Max, garminLTSpeedMps, image,
-  onLaunch, launching, launchStatus, onBack,
+  onLaunch, launching, launchStatus, streamText, onBack,
 }: {
   goalType: GoalType;
   raceName: string; raceDistanceKm: string; raceElevationGain: string; raceDate: string;
@@ -738,6 +738,7 @@ function Step7Result({
   onLaunch: () => void;
   launching: boolean;
   launchStatus?: string;
+  streamText?: string;
   onBack: () => void;
 }) {
   const dist = parseFloat(raceDistanceKm) || 10;
@@ -868,10 +869,15 @@ function Step7Result({
       </div>
 
       {launching && (
-        <div className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
-          <div className="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          <p className="text-white text-[15px] font-semibold">{launchStatus || 'Génération de ton plan…'}</p>
-          <p className="text-white/40 text-[12px]">Propulsé par Gemini 2.5 Flash</p>
+        <div className="fixed inset-0 z-30 bg-black/95 backdrop-blur-sm flex flex-col px-5 pt-16 pb-6 overflow-hidden">
+          <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin flex-shrink-0" />
+            <p className="text-white text-[13px] font-semibold">{launchStatus || 'Gemini génère ton plan…'}</p>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <pre className="text-[11px] text-[#C8E635]/80 font-mono leading-relaxed whitespace-pre-wrap">{streamText}</pre>
+          </div>
+          <p className="text-white/20 text-[11px] mt-3 flex-shrink-0 text-center">Propulsé par Gemini 2.5 Flash</p>
         </div>
       )}
 
@@ -1294,6 +1300,7 @@ function ChatContent() {
   const [blobImages, setBlobImages] = useState<string[]>([]);
   const [launching, setLaunching] = useState(false);
   const [launchStatus, setLaunchStatus] = useState('');
+  const [streamText, setStreamText] = useState('');
   const [racePriority, setRacePriority] = useState<'main' | 'secondary' | null>(null);
   const [goalAssessment, setGoalAssessment] = useState<GoalAssessment | null>(null);
   const [garminSummary, setGarminSummary] = useState<GarminActivitySummary | null>(null);
@@ -1333,28 +1340,49 @@ function ChatContent() {
   };
 
   const fetchGeminiPlan = async (onboarding: OnboardingData, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
-    setLaunchStatus('Gemini analyse ton profil et construit ton plan…');
+    setLaunchStatus('');
+    setStreamText('');
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 50_000);
+    const timeout = setTimeout(() => controller.abort(), 55_000);
     try {
       const res = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ onboarding, garmin }),
+        body: JSON.stringify({ onboarding, garmin, stream: true }),
         signal: controller.signal,
       });
-      const data = await res.json() as { sessions?: GeminiSession[]; goalAssessment?: GoalAssessment; profile?: UserProfile; error?: string };
-      if (data.sessions?.length) {
-        if (data.goalAssessment) setGoalAssessment(data.goalAssessment);
-        const profile = data.profile ?? buildProfile(
-          onboarding.goalType, onboarding.raceDate ?? '', onboarding.raceDistanceKm ?? '',
-          onboarding.raceElevationGain ?? '', onboarding.fitnessState, onboarding.weeklySessions, onboarding.trainingEnv,
-        );
-        return buildPlanFromGeminiSessions(profile, data.sessions);
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const evt = JSON.parse(line.slice(6)) as { text?: string; done?: boolean; sessions?: GeminiSession[]; goalAssessment?: GoalAssessment; profile?: UserProfile; error?: string };
+          if (evt.text) {
+            accumulated += evt.text;
+            setStreamText(accumulated);
+          }
+          if (evt.done && evt.sessions?.length) {
+            clearTimeout(timeout);
+            if (evt.goalAssessment) setGoalAssessment(evt.goalAssessment);
+            const profile = evt.profile ?? buildProfile(
+              onboarding.goalType, onboarding.raceDate ?? '', onboarding.raceDistanceKm ?? '',
+              onboarding.raceElevationGain ?? '', onboarding.fitnessState, onboarding.weeklySessions, onboarding.trainingEnv,
+            );
+            return buildPlanFromGeminiSessions(profile, evt.sessions!);
+          }
+          if (evt.error) console.warn('[generate-plan] stream error:', evt.error);
+        }
       }
-      console.warn('[generate-plan] fallback to algo:', data.error);
+      console.warn('[generate-plan] stream ended without done event, falling back');
     } catch (err) {
-      console.warn('[generate-plan] timeout or network error:', err);
+      console.warn('[generate-plan] stream error:', err);
     } finally {
       clearTimeout(timeout);
     }
@@ -1680,6 +1708,7 @@ function ChatContent() {
       onLaunch={handleStep7Launch}
       launching={launching}
       launchStatus={launchStatus}
+      streamText={streamText}
       onBack={() => setPhase('summary')}
     />
   );
@@ -1698,10 +1727,15 @@ function ChatContent() {
   return (
     <div className="min-h-screen bg-[#F2F2F7] flex flex-col relative">
       {launching && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
-          <div className="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-          <p className="text-white text-[15px] font-semibold">{launchStatus || 'Génération de ton plan…'}</p>
-          <p className="text-white/40 text-[12px]">Propulsé par Gemini 2.5 Flash</p>
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex flex-col px-5 pt-16 pb-6 overflow-hidden">
+          <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin flex-shrink-0" />
+            <p className="text-white text-[13px] font-semibold">{launchStatus || 'Gemini génère ton plan…'}</p>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <pre className="text-[11px] text-[#C8E635]/80 font-mono leading-relaxed whitespace-pre-wrap">{streamText}</pre>
+          </div>
+          <p className="text-white/20 text-[11px] mt-3 flex-shrink-0 text-center">Propulsé par Gemini 2.5 Flash</p>
         </div>
       )}
       <div className="max-w-md mx-auto w-full px-4 pt-14 pb-3 flex-shrink-0">
