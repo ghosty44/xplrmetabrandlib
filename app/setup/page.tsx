@@ -1207,8 +1207,8 @@ function SummaryScreen({
 
       <div className="max-w-md mx-auto w-full px-5 pb-36 space-y-4">
         <div>
-          <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Analyse de ton profil</h2>
-          <p className="text-[13px] text-[#8E8E93]">Voici ce que Gemini a retenu pour construire ton plan</p>
+          <h2 className="text-[22px] font-black text-[#0F0F10] mb-1">Prompt Gemini</h2>
+          <p className="text-[13px] text-[#8E8E93]">Contexte exact envoyé à l&apos;IA pour générer ton plan</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -1225,30 +1225,25 @@ function SummaryScreen({
           )}
         </div>
 
-        <div className="bg-white rounded-[24px] p-5" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+        <div className="bg-[#0F0F10] rounded-[24px] p-5" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-6 h-6 rounded-full bg-[#0F0F10] flex items-center justify-center flex-shrink-0">
+            <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 6v4l3 3" />
+                <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
               </svg>
             </div>
-            <p className="text-[12px] font-bold text-[#0F0F10] uppercase tracking-[0.08em]">Analyse du coach</p>
+            <p className="text-[12px] font-bold text-white uppercase tracking-[0.08em]">Prompt Gemini</p>
           </div>
           {loading ? (
-            <div className="space-y-2.5">
-              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
-              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-5/6 animate-pulse" />
-              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
-              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-4/6 animate-pulse" />
-              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-full animate-pulse" />
-              <div className="h-3.5 bg-[#F2F2F7] rounded-full w-3/4 animate-pulse" />
+            <div className="space-y-2">
+              <div className="h-2.5 bg-white/10 rounded-full w-full animate-pulse" />
+              <div className="h-2.5 bg-white/10 rounded-full w-4/5 animate-pulse" />
+              <div className="h-2.5 bg-white/10 rounded-full w-full animate-pulse" />
+              <div className="h-2.5 bg-white/10 rounded-full w-3/4 animate-pulse" />
+              <div className="h-2.5 bg-white/10 rounded-full w-full animate-pulse" />
             </div>
           ) : (
-            <div className="space-y-3">
-              {text.split('\n\n').filter(Boolean).map((para, i) => (
-                <p key={i} className="text-[14px] text-[#3C3C43] leading-relaxed">{para}</p>
-              ))}
-            </div>
+            <pre className="text-[11px] text-white/70 leading-relaxed whitespace-pre-wrap font-mono overflow-y-auto max-h-[400px]">{text}</pre>
           )}
         </div>
 
@@ -1326,14 +1321,14 @@ function ChatContent() {
     setSummaryText('');
     setSummaryLoading(true);
     setPhase('summary');
-    fetch('/api/reflect', {
+    fetch('/api/generate-plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ onboarding, garmin }),
+      body: JSON.stringify({ onboarding, garmin, preview: true }),
     })
       .then(r => r.json())
-      .then((d: { reflection?: string }) => setSummaryText(d.reflection ?? ''))
-      .catch(() => setSummaryText('Analyse indisponible.'))
+      .then((d: { prompt?: string }) => setSummaryText(d.prompt ?? ''))
+      .catch(() => setSummaryText('Erreur lors du chargement du prompt.'))
       .finally(() => setSummaryLoading(false));
   };
 

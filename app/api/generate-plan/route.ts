@@ -339,11 +339,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sessions: null, error: 'Clé API Gemini manquante' });
     }
 
-    let body: { onboarding?: OnboardingData; garmin?: GarminActivitySummary };
+    let body: { onboarding?: OnboardingData; garmin?: GarminActivitySummary; preview?: boolean };
     try { body = await req.json() as typeof body; }
     catch { return NextResponse.json({ sessions: null, error: 'Corps de requête invalide' }); }
 
-    const { onboarding, garmin } = body;
+    const { onboarding, garmin, preview } = body;
     if (!onboarding) {
       return NextResponse.json({ sessions: null, error: 'Données onboarding manquantes' });
     }
@@ -353,13 +353,17 @@ export async function POST(req: NextRequest) {
       : 12;
     const weeksCount = Math.max(4, Math.min(weeksUntil, 24));
 
+    const prompt = buildPrompt(onboarding, weeksCount, garmin);
+
+    if (preview) {
+      return NextResponse.json({ prompt });
+    }
+
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: { temperature: 0.7 },
     });
-
-    const prompt = buildPrompt(onboarding, weeksCount, garmin);
 
     function stripMarkdown(text: string): string {
       return text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '').trim();
