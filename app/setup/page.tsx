@@ -981,6 +981,16 @@ function ChatContent() {
     return undefined;
   };
 
+  const applyGarminThreshold = (profile: { thresholdPaceSec: number; thresholdSource?: string; goalTimeMin: number; goalRace: string }, ltSpeedMps: number) => {
+    const RACE_FACTORS: Record<string, number> = { '5k': 0.92, '10k': 0.97, halfMarathon: 1.03, marathon: 1.10 };
+    const RACE_DISTANCES: Record<string, number> = { '5k': 5, '10k': 10, halfMarathon: 21.1, marathon: 42.2 };
+    profile.thresholdPaceSec = Math.round(1000 / ltSpeedMps);
+    profile.thresholdSource = 'garmin';
+    const factor = RACE_FACTORS[profile.goalRace] ?? 1.0;
+    const dist = RACE_DISTANCES[profile.goalRace] ?? 10;
+    profile.goalTimeMin = Math.round(dist * Math.round(profile.thresholdPaceSec * factor) / 60);
+  };
+
   const fetchGeminiPlan = async (onboarding: OnboardingData, garmin?: GarminActivitySummary): Promise<TrainingPlan> => {
     setLaunchStatus('');
     setStreamText('');
@@ -1019,8 +1029,7 @@ function ChatContent() {
             );
             // Garmin lactate threshold is always authoritative — override regardless of profile origin
             if (garmin?.lactateThresholdSpeedMps) {
-              profile.thresholdPaceSec = Math.round(1000 / garmin.lactateThresholdSpeedMps);
-              profile.thresholdSource = 'garmin';
+              applyGarminThreshold(profile, garmin.lactateThresholdSpeedMps);
             } else {
               profile.thresholdSource = profile.thresholdSource ?? 'estimated';
             }
@@ -1041,8 +1050,7 @@ function ChatContent() {
       onboarding.raceElevationGain ?? '', onboarding.fitnessState, onboarding.weeklySessions, onboarding.trainingEnv,
     );
     if (garmin?.lactateThresholdSpeedMps) {
-      fallbackProfile.thresholdPaceSec = Math.round(1000 / garmin.lactateThresholdSpeedMps);
-      fallbackProfile.thresholdSource = 'garmin';
+      applyGarminThreshold(fallbackProfile, garmin.lactateThresholdSpeedMps);
     } else {
       fallbackProfile.thresholdSource = 'estimated';
     }
@@ -1085,8 +1093,7 @@ function ChatContent() {
       const profile = buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, 'active', weeklySessions ?? 3, 'flat');
       const garminForFallback: GarminActivitySummary | undefined = garminSummary ?? undefined;
       if (garminForFallback?.lactateThresholdSpeedMps) {
-        profile.thresholdPaceSec = Math.round(1000 / garminForFallback.lactateThresholdSpeedMps);
-        profile.thresholdSource = 'garmin';
+        applyGarminThreshold(profile, garminForFallback.lactateThresholdSpeedMps);
       } else {
         profile.thresholdSource = 'estimated';
       }
