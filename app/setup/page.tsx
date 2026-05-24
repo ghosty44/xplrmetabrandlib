@@ -17,6 +17,7 @@ import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 
 type Phase =
   | 'garmin' | 'loading'
+  | 'target' | 'feasibility'
   | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step6' | 'step7' | 'step8'
   | 'summary' | 'chat' | 'preview';
 
@@ -1471,6 +1472,227 @@ function SummaryScreen({
   );
 }
 
+// ── New lean onboarding (Garmin → Target → Feasibility) ──────────────────────
+
+type DistanceChoice = '5k' | '10k' | 'half' | 'marathon' | 'trail';
+
+const DISTANCE_PRESETS: Record<Exclude<DistanceChoice, 'trail'>, { km: number; label: string }> = {
+  '5k': { km: 5, label: '5 km' },
+  '10k': { km: 10, label: '10 km' },
+  half: { km: 21.1, label: 'Semi' },
+  marathon: { km: 42.2, label: 'Marathon' },
+};
+
+const DAY_CHIPS: { d: number; label: string }[] = [
+  { d: 1, label: 'L' }, { d: 2, label: 'M' }, { d: 3, label: 'M' }, { d: 4, label: 'J' },
+  { d: 5, label: 'V' }, { d: 6, label: 'S' }, { d: 7, label: 'D' },
+];
+
+function TargetStep({
+  initialChoice, initialTrailKm, initialTrailDPlus, initialDate, initialGoalTime, initialDays,
+  garminDays,
+  onSubmit, onSkip,
+}: {
+  initialChoice: DistanceChoice | null;
+  initialTrailKm: string;
+  initialTrailDPlus: string;
+  initialDate: string;
+  initialGoalTime: string;
+  initialDays: number[];
+  garminDays?: number[];
+  onSubmit: (data: { choice: DistanceChoice; trailKm: string; trailDPlus: string; date: string; goalTime: string; days: number[] }) => void;
+  onSkip: () => void;
+}) {
+  const [choice, setChoice] = useState<DistanceChoice | null>(initialChoice);
+  const [trailKm, setTrailKm] = useState(initialTrailKm);
+  const [trailDPlus, setTrailDPlus] = useState(initialTrailDPlus);
+  const [date, setDate] = useState(initialDate);
+  const [goalTime, setGoalTime] = useState(initialGoalTime);
+  const [days, setDays] = useState<number[]>(initialDays.length > 0 ? initialDays : (garminDays ?? []));
+
+  const toggleDay = (d: number) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b));
+
+  const trailValid = choice === 'trail' ? Number(trailKm) > 0 : true;
+  const daysValid = days.length >= 3 && days.length <= 6;
+  const goalValid = parseGoalTime(goalTime) != null;
+  const dateValid = !!date && new Date(date).getTime() > Date.now();
+  const canSubmit = !!choice && trailValid && daysValid && goalValid && dateValid;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  return (
+    <div className="min-h-screen bg-[#F2F2F7]">
+      <div className="max-w-md mx-auto px-5 pt-14 pb-32 space-y-5">
+        <div>
+          <p className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-[0.15em] mb-1">Étape 2 / 3</p>
+          <h1 className="text-[28px] font-black text-[#0F0F10] leading-tight">Ton objectif</h1>
+          <p className="text-[13px] text-[#8E8E93] mt-1">On a tes données physio. Dis-nous juste où tu veux aller.</p>
+        </div>
+
+        {/* Distance */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em]">Distance</p>
+          <div className="grid grid-cols-4 gap-2">
+            {(['5k', '10k', 'half', 'marathon'] as const).map(k => (
+              <button key={k} onClick={() => setChoice(k)}
+                className={`py-3 rounded-[14px] text-[12px] font-bold transition-all active:scale-[0.96] ${choice === k ? 'bg-[#0F0F10] text-white' : 'bg-white border border-black/8 text-[#0F0F10]'}`}>
+                {DISTANCE_PRESETS[k].label}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setChoice('trail')}
+            className={`w-full py-3 rounded-[14px] text-[12px] font-bold transition-all active:scale-[0.96] ${choice === 'trail' ? 'bg-[#0F0F10] text-white' : 'bg-white border border-black/8 text-[#0F0F10]'}`}>
+            Trail (distance + D+ libres)
+          </button>
+          {choice === 'trail' && (
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <div>
+                <input type="number" inputMode="decimal" value={trailKm} onChange={e => setTrailKm(e.target.value)} placeholder="km" min="1"
+                  className="w-full px-3 py-2.5 bg-white border border-black/8 rounded-[12px] text-[13px] text-[#0F0F10] outline-none focus:border-[#0F0F10]" />
+                <p className="text-[10px] text-[#8E8E93] mt-1 ml-1">Distance (km)</p>
+              </div>
+              <div>
+                <input type="number" inputMode="decimal" value={trailDPlus} onChange={e => setTrailDPlus(e.target.value)} placeholder="m" min="0"
+                  className="w-full px-3 py-2.5 bg-white border border-black/8 rounded-[12px] text-[13px] text-[#0F0F10] outline-none focus:border-[#0F0F10]" />
+                <p className="text-[10px] text-[#8E8E93] mt-1 ml-1">D+ (m)</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Date */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em]">Date de la course</p>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} min={todayStr}
+            className="w-full px-4 py-3 bg-white border border-black/8 rounded-[14px] text-[14px] text-[#0F0F10] outline-none focus:border-[#0F0F10]" />
+        </div>
+
+        {/* Goal time */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em]">Chrono visé</p>
+          <input type="text" inputMode="text" value={goalTime} onChange={e => setGoalTime(e.target.value)}
+            placeholder="ex. 44min ou 3h30"
+            className="w-full px-4 py-3 bg-white border border-black/8 rounded-[14px] text-[14px] text-[#0F0F10] placeholder:text-[#8E8E93] outline-none focus:border-[#0F0F10]" />
+        </div>
+
+        {/* Available days */}
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <p className="text-[10px] font-black text-[#8E8E93] uppercase tracking-[0.12em]">Jours dispo (3 à 6)</p>
+            <p className="text-[10px] text-[#8E8E93]">{days.length} sélectionné{days.length > 1 ? 's' : ''}</p>
+          </div>
+          <div className="flex gap-1.5">
+            {DAY_CHIPS.map(({ d, label }) => {
+              const sel = days.includes(d);
+              return (
+                <button key={d} onClick={() => toggleDay(d)}
+                  className={`flex-1 h-12 rounded-[12px] text-[14px] font-black transition-all active:scale-[0.94] ${sel ? 'bg-[#C8E635] text-[#0F0F10]' : 'bg-white border border-black/8 text-[#8E8E93]'}`}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {garminDays && garminDays.length > 0 && days.length === 0 && (
+            <p className="text-[10px] text-[#007AFF]">Pré-rempli depuis tes habitudes Garmin</p>
+          )}
+        </div>
+
+        <div className="pt-3 space-y-2">
+          <button onClick={() => canSubmit && choice && onSubmit({ choice, trailKm, trailDPlus, date, goalTime, days })}
+            disabled={!canSubmit}
+            className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black transition-all active:scale-[0.98] disabled:bg-[#C7C7CC]">
+            Vérifier la faisabilité →
+          </button>
+          <button onClick={onSkip}
+            className="w-full text-[11px] text-[#8E8E93] py-2">Passer en mode questionnaire détaillé</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeasibilityStep({
+  goalMin, predictedMin, distanceLabel, hasGarmin,
+  onBack, onConfirm, launching,
+}: {
+  goalMin: number;
+  predictedMin: number;
+  distanceLabel: string;
+  hasGarmin: boolean;
+  onBack: () => void;
+  onConfirm: () => void;
+  launching: boolean;
+}) {
+  const fmt = (m: number) => {
+    const h = Math.floor(m / 60); const mm = m % 60;
+    return h > 0 ? `${h}h${String(mm).padStart(2, '0')}` : `${mm} min`;
+  };
+
+  const diffPct = (goalMin - predictedMin) / predictedMin;
+  let verdict: 'réaliste' | 'ambitieux' | 'sous-estimé' | 'agressif';
+  let verdictColor: string;
+  let message: string;
+  if (diffPct < -0.10) {
+    verdict = 'agressif';
+    verdictColor = '#FF3B30';
+    message = `Ta physiologie actuelle indique un potentiel autour de ${fmt(predictedMin)}. Viser ${fmt(goalMin)} risque de générer des allures blessantes. Tu peux ajuster ou continuer si tu sens que tu peux pousser.`;
+  } else if (diffPct < -0.03) {
+    verdict = 'ambitieux';
+    verdictColor = '#FF9500';
+    message = `Tu vises ${fmt(goalMin)} alors qu'on prédit ${fmt(predictedMin)} sur ta forme actuelle. C'est ambitieux mais atteignable avec un plan bien construit.`;
+  } else if (diffPct > 0.10) {
+    verdict = 'sous-estimé';
+    verdictColor = '#007AFF';
+    message = `On prédit ${fmt(predictedMin)} sur ta physiologie actuelle — tu as une marge confortable. Tu peux revoir ton objectif à la hausse si tu veux te challenger.`;
+  } else {
+    verdict = 'réaliste';
+    verdictColor = '#34C759';
+    message = `Ta cible de ${fmt(goalMin)} est cohérente avec ta physiologie actuelle (${fmt(predictedMin)} estimé). Plan en cours de génération.`;
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F2F2F7]">
+      <div className="max-w-md mx-auto px-5 pt-14 pb-32 space-y-5">
+        <div>
+          <p className="text-[11px] font-bold text-[#8E8E93] uppercase tracking-[0.15em] mb-1">Étape 3 / 3</p>
+          <h1 className="text-[28px] font-black text-[#0F0F10] leading-tight">Check de faisabilité</h1>
+          <p className="text-[13px] text-[#8E8E93] mt-1">{hasGarmin ? 'On a comparé ta cible à ta physio Garmin.' : 'Estimation basée sur des moyennes (Garmin non connecté).'}</p>
+        </div>
+
+        <div className="rounded-[24px] bg-white border border-black/5 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] font-bold text-[#0F0F10]">{distanceLabel}</p>
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide"
+              style={{ backgroundColor: `${verdictColor}20`, color: verdictColor }}>
+              {verdict}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-[16px] p-4 bg-[#F8F8F8] border border-black/5 text-center">
+              <p className="text-[18px] font-black text-[#0F0F10] tabular-nums">{fmt(goalMin)}</p>
+              <p className="text-[9px] font-semibold text-[#C7C7CC] uppercase tracking-[0.08em] mt-0.5">Ton objectif</p>
+            </div>
+            <div className="rounded-[16px] p-4 bg-[#0F0F10] text-center">
+              <p className="text-[18px] font-black text-white tabular-nums">{fmt(predictedMin)}</p>
+              <p className="text-[9px] font-semibold text-white/50 uppercase tracking-[0.08em] mt-0.5">Prédiction physio</p>
+            </div>
+          </div>
+          <p className="text-[12px] text-[#8E8E93] leading-relaxed">{message}</p>
+        </div>
+
+        <div className="pt-3 space-y-2">
+          <button onClick={onConfirm} disabled={launching}
+            className="w-full py-4 rounded-[20px] bg-[#0F0F10] text-white text-[15px] font-black transition-all active:scale-[0.98] disabled:opacity-60">
+            {launching ? 'Génération en cours…' : 'Générer mon plan →'}
+          </button>
+          <button onClick={onBack} disabled={launching}
+            className="w-full text-[13px] text-[#8E8E93] py-2 font-semibold">Modifier mon objectif</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 function ChatContent() {
@@ -1504,6 +1726,12 @@ function ChatContent() {
   const [racePriority, setRacePriority] = useState<'main' | 'secondary' | null>(null);
   const [goalAssessment, setGoalAssessment] = useState<GoalAssessment | null>(null);
   const [garminSummary, setGarminSummary] = useState<GarminActivitySummary | null>(null);
+
+  // New lean onboarding state
+  const [distChoice, setDistChoice] = useState<DistanceChoice | null>(null);
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [predictedMin, setPredictedMin] = useState<number | null>(null);
+  const [parsedGoalMin, setParsedGoalMin] = useState<number | null>(null);
 
   // Summary screen
   const [summaryText, setSummaryText] = useState('');
@@ -1619,6 +1847,7 @@ function ChatContent() {
         weeklySessions: weeklySessions ?? 3,
         trainingEnv: trainingEnv ?? 'flat',
         raceGoalTime: raceGoalTime || undefined,
+        availableDays: selectedDays.length >= 3 ? selectedDays : undefined,
       };
 
       // 3. Gemini computes everything: profile + goal assessment + sessions
@@ -1672,15 +1901,15 @@ function ChatContent() {
               if (d.shoes?.length) saveShoes(d.shoes);
               router.replace('/');
             } else {
-              setPhase('step1');
+              setPhase('target');
               setInitialized(true);
             }
           })
-          .catch(() => { setPhase('step1'); setInitialized(true); });
+          .catch(() => { setPhase('target'); setInitialized(true); });
         return;
       }
       clearChatMessages();
-      setPhase('step1');
+      setPhase('target');
       setInitialized(true);
       return;
     }
@@ -1707,7 +1936,7 @@ function ChatContent() {
         }
       } catch { /* non-fatal */ }
     }
-    setPhase('step1');
+    setPhase('target');
     setInitialized(true);
   };
 
@@ -1813,7 +2042,7 @@ function ChatContent() {
     />
   );
 
-  if (phase === 'garmin') return <GarminConnectStep onConnected={handleGarminConnected} onSkip={() => { setPhase('step1'); setInitialized(true); }} />;
+  if (phase === 'garmin') return <GarminConnectStep onConnected={handleGarminConnected} onSkip={() => { setPhase('target'); setInitialized(true); }} />;
 
   if (phase === 'loading' || !initialized) return (
     <div className="min-h-screen bg-[#F2F2F7] flex flex-col items-center justify-center gap-3">
@@ -1821,6 +2050,82 @@ function ChatContent() {
       <p className="text-[12px] text-[#8E8E93]">Chargement de ton profil…</p>
     </div>
   );
+
+  if (phase === 'target') {
+    // Derive default days from Garmin habits if available
+    const garminDays = garminSummary?.runs && garminSummary.runs.length > 0
+      ? Array.from(new Set(garminSummary.runs.slice(0, 20).map(r => {
+          const d = new Date(r.date).getDay();
+          return d === 0 ? 7 : d; // Sunday → 7
+        }).filter(d => d >= 1 && d <= 7))).slice(0, 4).sort((a, b) => a - b)
+      : undefined;
+
+    return (
+      <TargetStep
+        initialChoice={distChoice}
+        initialTrailKm={raceDistanceKm}
+        initialTrailDPlus={raceElevationGain}
+        initialDate={raceDate}
+        initialGoalTime={raceGoalTime}
+        initialDays={selectedDays}
+        garminDays={garminDays}
+        onSubmit={async ({ choice, trailKm, trailDPlus, date, goalTime, days }) => {
+          // 1. Persist user choices into existing onboarding state
+          setDistChoice(choice);
+          setSelectedDays(days);
+          const isTrail = choice === 'trail';
+          const km = isTrail ? trailKm : String(DISTANCE_PRESETS[choice].km);
+          const dPlus = isTrail ? trailDPlus : '0';
+          setGoalType(isTrail ? 'trail' : 'road');
+          setRaceDistanceKm(km);
+          setRaceElevationGain(dPlus);
+          setRaceDate(date);
+          setRaceGoalTime(goalTime);
+          setWeeklySessions(days.length as 3 | 4 | 5 | 6);
+          setRacePriority('main');
+          setFitnessState('active');
+          setRecentInjuries('none');
+          setStrengthPerWeek(0);
+          setTrainingEnv('flat');
+
+          // 2. Fetch Garmin summary if not loaded yet
+          let g: GarminActivitySummary | undefined = garminSummary ?? undefined;
+          if (!g) g = await fetchGarminSummary();
+
+          // 3. Compute prediction
+          const distKm = parseFloat(km) || 10;
+          const elev = parseFloat(dPlus) || 0;
+          const predicted = estimateFinishMin(
+            distKm, elev, isTrail, days.length, 'active',
+            g?.recentAvgPaceSecKm, g?.vo2Max, g?.lactateThresholdSpeedMps,
+          );
+          setPredictedMin(predicted);
+          setParsedGoalMin(parseGoalTime(goalTime) ?? predicted);
+
+          setPhase('feasibility');
+        }}
+        onSkip={() => setPhase('step1')}
+      />
+    );
+  }
+
+  if (phase === 'feasibility' && predictedMin != null && parsedGoalMin != null) {
+    const isTrail = distChoice === 'trail';
+    const distLabel = isTrail
+      ? `Trail · ${raceDistanceKm} km${raceElevationGain && Number(raceElevationGain) > 0 ? ` · ${raceElevationGain} m D+` : ''}`
+      : distChoice ? DISTANCE_PRESETS[distChoice].label : '';
+    return (
+      <FeasibilityStep
+        goalMin={parsedGoalMin}
+        predictedMin={predictedMin}
+        distanceLabel={distLabel}
+        hasGarmin={!!garminSummary}
+        launching={launching}
+        onBack={() => setPhase('target')}
+        onConfirm={handleStep7Launch}
+      />
+    );
+  }
 
   if (phase === 'step1') return (
     <Step1GoalType images={blobImages} onSelect={(t) => { setGoalType(t); setPhase('step2'); }} />

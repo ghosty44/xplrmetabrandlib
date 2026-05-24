@@ -18,6 +18,7 @@ export interface OnboardingData {
   weeklySessions: 3 | 4 | 5 | 6;
   trainingEnv: 'flat' | 'bump' | 'hill' | 'mountain' | 'cols';
   raceGoalTime?: string;
+  availableDays?: number[];
 }
 
 export interface GeminiSession {
@@ -342,7 +343,9 @@ function buildPrompt(onboarding: OnboardingData, weeksCount: number, garmin?: Ga
   const { context: athleteContext, imposedGoalMin, imposedThresholdSec } = buildAthleteContext(onboarding, garmin);
   const startKm = estimateStartKm(onboarding, garmin);
   const weeklyVolumes = computeWeeklyVolumes(startKm, weeksCount);
-  const runDays = buildDefaultDays(onboarding.weeklySessions);
+  const runDays = (onboarding.availableDays && onboarding.availableDays.length === onboarding.weeklySessions)
+    ? [...onboarding.availableDays].sort((a, b) => a - b)
+    : buildDefaultDays(onboarding.weeklySessions);
   const strengthDays = buildStrengthDays(runDays, onboarding.strengthPerWeek);
   const DAY_NAMES = ['', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
   const runDaysLabel = runDays.map(d => `${d}(${DAY_NAMES[d]})`).join(', ');
