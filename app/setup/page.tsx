@@ -1040,6 +1040,12 @@ function ChatContent() {
       onboarding.goalType, onboarding.raceDate ?? '', onboarding.raceDistanceKm ?? '',
       onboarding.raceElevationGain ?? '', onboarding.fitnessState, onboarding.weeklySessions, onboarding.trainingEnv,
     );
+    if (garmin?.lactateThresholdSpeedMps) {
+      fallbackProfile.thresholdPaceSec = Math.round(1000 / garmin.lactateThresholdSpeedMps);
+      fallbackProfile.thresholdSource = 'garmin';
+    } else {
+      fallbackProfile.thresholdSource = 'estimated';
+    }
     try { return generatePlan(fallbackProfile); }
     catch { return { id: `plan_${Date.now()}`, createdAt: new Date().toISOString(), profile: fallbackProfile, sessions: [] }; }
   };
@@ -1077,6 +1083,13 @@ function ChatContent() {
     } catch (err) {
       console.error('[step7Launch]', err);
       const profile = buildProfile(goalType ?? 'road', raceDate, raceDistanceKm, raceElevationGain, 'active', weeklySessions ?? 3, 'flat');
+      const garminForFallback: GarminActivitySummary | undefined = garminSummary ?? undefined;
+      if (garminForFallback?.lactateThresholdSpeedMps) {
+        profile.thresholdPaceSec = Math.round(1000 / garminForFallback.lactateThresholdSpeedMps);
+        profile.thresholdSource = 'garmin';
+      } else {
+        profile.thresholdSource = 'estimated';
+      }
       try { setGeneratedPlan(generatePlan(profile)); } catch { setGeneratedPlan({ id: `plan_${Date.now()}`, createdAt: new Date().toISOString(), profile, sessions: [] }); }
       setPhase('preview');
     } finally {
