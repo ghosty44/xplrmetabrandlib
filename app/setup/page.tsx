@@ -9,7 +9,7 @@ import {
   saveGarminUserId, saveShoes, GarminTokens,
 } from '@/lib/store';
 import { UserProfile, TrainingPlan, Session, Step, Zone, Shoe } from '@/lib/types';
-import { getZonePaceRange } from '@/lib/zones';
+import { getZonePaceRange, sessionTotalMin, sessionKm } from '@/lib/zones';
 import type { GeminiSession, GoalAssessment, OnboardingData } from '@/app/api/generate-plan/route';
 import type { GarminActivitySummary } from '@/app/api/garmin/activities/route';
 
@@ -231,21 +231,50 @@ function buildStepsForGeminiSession(intensity: string, totalMin: number, thresho
   return [makeStep('EF', totalMin, thresholdSec)];
 }
 
+// Canonical name per intensity — overrides Gemini if it labels a session inconsistently
+// (e.g. a "Seuil lactique" tagged intensity: 'hard' would actually be VMA work)
+const INTENSITY_CANONICAL: Record<string, { name: string; keywords: RegExp }> = {
+  easy:     { name: 'Endurance Fondamentale', keywords: /endurance|footing|ef|easy|fondamentale/i },
+  long:     { name: 'Sortie Longue',          keywords: /longue|long run|sortie longue/i },
+  recovery: { name: 'Récupération Active',    keywords: /récup|recovery|décrass/i },
+  moderate: { name: 'Seuil',                  keywords: /seuil|tempo|moderate|allure spécifique/i },
+  hard:     { name: 'VMA',                    keywords: /vma|vo2|intervalles? courts?|fractionné/i },
+  hill:     { name: 'Côtes',                  keywords: /côte|hill|montée/i },
+  strength: { name: 'Renforcement',           keywords: /renforc|strength|gainage|muscu/i },
+};
+
+function normalizeSessionName(rawName: string, intensity: string): string {
+  const canonical = INTENSITY_CANONICAL[intensity];
+  if (!canonical) return rawName;
+  // Trust Gemini's name only if it matches the intensity's keyword family
+  if (canonical.keywords.test(rawName)) return rawName;
+  return canonical.name;
+}
+
 function buildPlanFromGeminiSessions(profile: UserProfile, geminiSessions: GeminiSession[]): TrainingPlan {
-  const sessions: Session[] = geminiSessions.map((gs, i) => ({
-    id: `gemini_${gs.week}_${gs.day}_${i}`,
-    name: gs.name,
-    week: gs.week,
-    day: gs.day,
-    type: gs.intensity === 'strength' ? 'strength' : 'running',
-    description: gs.description,
-    totalMin: gs.totalMin,
-    totalKm: gs.km ?? Math.round((KM_PER_MIN[gs.intensity] ?? 0.165) * gs.totalMin * 10) / 10,
-    completed: false,
-    garminSynced: false,
-    intensity: gs.intensity,
-    steps: gs.intensity === 'strength' ? [] : buildStepsForGeminiSession(gs.intensity, gs.totalMin, profile.thresholdPaceSec),
-  }));
+  const sessions: Session[] = geminiSessions.map((gs, i) => {
+    const isStrength = gs.intensity === 'strength';
+    const steps = isStrength ? [] : buildStepsForGeminiSession(gs.intensity, gs.totalMin, profile.thresholdPaceSec);
+    // Recompute totalMin and totalKm from steps so the displayed values match the actual bricks
+    const totalMin = isStrength ? gs.totalMin : sessionTotalMin(steps);
+    const totalKm = isStrength
+      ? 0
+      : Math.round(sessionKm(steps, profile.thresholdPaceSec) * 10) / 10;
+    return {
+      id: `gemini_${gs.week}_${gs.day}_${i}`,
+      name: normalizeSessionName(gs.name, gs.intensity),
+      week: gs.week,
+      day: gs.day,
+      type: isStrength ? 'strength' : 'running',
+      description: gs.description,
+      totalMin,
+      totalKm,
+      completed: false,
+      garminSynced: false,
+      intensity: gs.intensity,
+      steps,
+    };
+  });
   return {
     id: `gemini_${Date.now()}`,
     createdAt: new Date().toISOString(),

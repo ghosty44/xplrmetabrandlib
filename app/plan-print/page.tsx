@@ -70,6 +70,8 @@ export default function PlanPrintPage() {
 
   const totalWeeks = Math.max(...plan.sessions.map(s => s.week));
   const p = plan.profile;
+  const totalKm = plan.sessions.reduce((sum, s) => sum + (s.totalKm ?? 0), 0);
+  const avgWeeklyKm = totalWeeks > 0 ? Math.round(totalKm / totalWeeks) : 0;
   const thresholdPace = formatPaceSec(p.thresholdPaceSec);
   const raceLabel = RACE_LABELS[p.goalRace] ?? p.goalRace;
   const goalTimeStr = p.goalTimeMin
@@ -107,7 +109,7 @@ export default function PlanPrintPage() {
             { label: 'Semaines', val: totalWeeks },
             { label: 'Séances', val: plan.sessions.length },
             { label: 'Allure seuil', val: `${thresholdPace}/km` },
-            { label: 'Volume hebdo', val: `${p.weeklyKm} km/sem` },
+            { label: 'Volume hebdo moyen', val: `${avgWeeklyKm} km/sem` },
             ...(p.maxHR ? [{ label: 'FC max', val: `${p.maxHR} bpm` }] : []),
           ].map(({ label, val }) => (
             <div key={label}>
@@ -124,7 +126,9 @@ export default function PlanPrintPage() {
           <div key={week} style={{ marginBottom: 24, pageBreakInside: 'avoid' }}>
             <div style={{ background: '#0F0F10', color: '#fff', padding: '8px 14px', borderRadius: '10px 10px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, fontWeight: 700 }}>Semaine {week}</span>
-              <span style={{ fontSize: 11, color: '#C8E635' }}>{weekSessions.reduce((sum, s) => sum + s.totalMin, 0)} min total</span>
+              <span style={{ fontSize: 11, color: '#C8E635' }}>
+                {Math.round(weekSessions.reduce((sum, s) => sum + (s.totalKm ?? 0), 0) * 10) / 10} km · {weekSessions.reduce((sum, s) => sum + s.totalMin, 0)} min
+              </span>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '0 0 10px 10px', overflow: 'hidden', border: '1px solid #eee', borderTop: 'none' }}>
               <thead>
