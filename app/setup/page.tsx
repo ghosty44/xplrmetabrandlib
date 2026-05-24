@@ -1017,6 +1017,13 @@ function ChatContent() {
               onboarding.goalType, onboarding.raceDate ?? '', onboarding.raceDistanceKm ?? '',
               onboarding.raceElevationGain ?? '', onboarding.fitnessState, onboarding.weeklySessions, onboarding.trainingEnv,
             );
+            // Garmin lactate threshold is always authoritative — override regardless of profile origin
+            if (garmin?.lactateThresholdSpeedMps) {
+              profile.thresholdPaceSec = Math.round(1000 / garmin.lactateThresholdSpeedMps);
+              profile.thresholdSource = 'garmin';
+            } else {
+              profile.thresholdSource = profile.thresholdSource ?? 'estimated';
+            }
             return buildPlanFromGeminiSessions(profile, evt.sessions!);
           }
           if (evt.error) console.warn('[generate-plan] stream error:', evt.error);
